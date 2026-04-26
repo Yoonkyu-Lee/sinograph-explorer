@@ -99,46 +99,82 @@ download stream:  ─────────  download(N) ──────  d
 
 ---
 
-## 5. Phase OPT-2 — GPU polygon rasterizer (참조 설계)
+## 5. Phase OPT-2 — GPU polygon rasterizer (선택 확정 2026-04-23)
 
-### 동기
+### 5.1 동기
 
-mask raster 가 70 s 의 wall time 을 먹는데 그 중 대부분은 **TrueType
-outline → bitmap raster** 의 freetype CPU 비용. 이 단계를 GPU 로 옮기면
-mask_wait 자체가 사라짐. 또한 같은 outline 을 batch 안 여러 변주
-(stroke_ops jitter 등) 에 대해 한 번만 GPU 로 보내는 sharing 이 가능.
+mask raster 가 70 s wall time 을 먹는데 OPT-1 실측으로 그것이 PCIe 가 아니라
+**CPU freetype + IPC overhead** 임이 확정. 이 단계를 GPU 로 옮기면 mask_wait
+자체가 사라짐. **유일하게 의미 있는 win**.
 
-### 동작 흐름
+### 5.2 전체 흐름
 
 ```
-[CPU one-time per glyph, cached]
-    freetype 으로 outline 추출 → polygon list (N segments × 2 floats)
-    contour boundaries (begin/end indices)
+[CPU one-time per (font, char), 캐시]
+    freetype-py 로 글리프 outline 추출 (→ contours of segments)
+    Bezier flatten (tolerance-based subdivision) → polyline 만 남음
+    저장 형식: float32 [M_total, 2] + contour offsets + per-glyph offsets
 
-[GPU per-batch]
-    1. (Lab 8 기법) edge segment array 를 y-coord 로 sort + JDS-style 정리
-    2. (Lab 7 scan) 각 scan-line 의 active edge prefix sum
-    3. (Lab 4 stencil) 픽셀 grid sweep: 각 thread 가 자기 픽셀의 (x, y) 에서
-       active edge 들과 교차 카운트 → 홀짝 룰로 fill 결정 + AA edge alpha
-    4. 결과 mask 가 곧장 (N, 1, H, W) tensor → 기존 augment chain 으로
+[CPU per batch — main process]
+    batch 의 N 글자 outline 을 packed tensor 로 묶기
+    edge tensor (B, E_max, 4): (x0, y0, x1, y1) — zero-padded
+
+[GPU per batch]
+    custom CUDA kernel
+        per-pixel point-in-polygon (even/odd rule, AA via supersample)
+        thread (b, y, x) iterates the b-th glyph's E edges → crossing count
+        Lab 4 (stencil) + Lab 8 (coalesced edge access) 패턴
+    output: (B, 1, H, W) float [0..1] — 기존 augment chain 의 mask 와 동형
 ```
 
-### 설계 결정
+### 5.3 Phase 분할 + 일정
 
-- **Polygon storage**: contour 별로 (N, 2) float arr + per-glyph offset/count.
-  Shared memory 에 64 KB 단위로 chunk 로 올림.
-- **Resolution**: 384×384 (현재 CANVAS 와 동일) — 이후 augment 호환성 유지
-- **AA**: 4× supersample + boxfilter, 또는 analytic edge coverage
-- **단위 테스트**: PIL.ImageDraw.polygon 결과와 IoU > 0.99 또는 통계적
-  유사성 (pixel diff < 1 %)
-- **Python 바인딩**: pybind11 또는 torch C++ extension. 호출 시그니처
-  `cuda_raster_batch(polygons, contour_offsets, glyph_offsets, H, W) → mask_t`
+| Phase | 내용 | 예상 |
+|---|---|---|
+| **OPT-2.1** | freetype-py 로 outline 추출 + Bezier flatten + cache. PIL 과 contour 비교 검증 | 1-2 일 |
+| **OPT-2.2** | CUDA kernel V1 (per-pixel point-in-polygon, naive) + torch C++ extension 빌드 + 단일 글리프 IoU 검증 | 3-5 일 |
+| **OPT-2.3** | `mask_adapter` 에 `cuda_outline` source kind 추가 → mp.Pool 워커 우회 | 1-2 일 |
+| **OPT-2.4** | 300-class steady-state bench, V1 충분히 빠르면 종료. 부족하면 tile-based + shared memory edge cache 로 V2 | 3-5 일 |
 
-### 위험
+총 **8-14 일**. final demo 전 1-2 주 budget 안쪽.
 
-- TrueType hinting / subpixel positioning 차이 — 작은 글자에서 PIL 과 1-2 px
-  편차 가능. 학습엔 영향 없으나 parity 검증 시 lenient 기준 필요.
-- Cubic Bezier → polyline flatten 정책 (tolerance / segment count) 결정 필요.
+### 5.4 모듈 / 파일 구조 (계획)
+
+```
+synth_engine_v3/scripts/cuda_raster/
+  __init__.py
+  outline_cache.py       OPT-2.1 — freetype 추출 + Bezier flatten + LRU cache
+  raster_kernel.cu       OPT-2.2 — CUDA __global__ kernel
+  raster_binding.cpp     OPT-2.2 — pybind11 / torch C++ extension binding
+  setup.py               OPT-2.2 — torch.utils.cpp_extension build script
+  rasterize.py           OPT-2.2 — Python facing API: rasterize_batch(outlines, H, W) → mask_t
+  test_parity.py         OPT-2.2 — PIL 과 IoU 비교 단위 테스트
+```
+
+### 5.5 단위 테스트 / parity 기준
+
+- 단일 char (예: 鑑) 을 PIL.ImageDraw.polygon 으로 렌더 vs CUDA kernel 결과
+- **IoU ≥ 0.95** 면 통과. 1-2 px 경계 차이 (TT hinting / subpixel positioning)
+  는 허용. AA 정책 차이도 허용.
+- 100 random char 의 평균 IoU ≥ 0.97
+- 음수 좌표 / 빈 outline 등 edge case 에서 crash 없음
+
+### 5.6 의존성
+
+- **freetype-py** (pip): outline 추출. PIL 도 freetype 을 쓰지만 outline 직접
+  접근은 freetype-py 가 깨끗함.
+- **torch.utils.cpp_extension**: PyTorch 빌드한 nvcc 와 같은 CUDA 버전으로
+  자동 컴파일. 별도 pybind11 설치 불필요.
+
+### 5.7 위험 + 완화
+
+| 위험 | 완화 |
+|---|---|
+| TrueType hinting 으로 PIL 과 미세 차이 | parity 기준 lenient (IoU 0.95). 학습엔 영향 없음 |
+| Cubic Bezier flatten tolerance 결정 | 0.5 px tolerance 기본, 글자 사이즈 작으면 0.25 px |
+| Windows + nvcc + MSVC 호환 | torch.utils.cpp_extension 이 알아서 처리. 실패 시 PYTORCH_CUDA_ALLOC_CONF / CUDAToolkit 경로 점검 |
+| V1 kernel 이 충분히 빠르지 않으면 | tile-based + shared memory (Lab 4 패턴) 로 V2. 또는 nvdiffrast 같은 기존 lib 검토 |
+| 학습 일정 압박 | 2.4 까지 끝나야 재corpus 생성. 그 전까진 baseline 237 s/s 로 production 진행 가능 (병렬 트랙) |
 
 ---
 
