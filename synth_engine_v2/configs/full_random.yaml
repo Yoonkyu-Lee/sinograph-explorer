@@ -1,0 +1,58 @@
+# 전체 변수 활성화 — 제안된 확장 max 기준.
+# FontSource (malgun) 기반, 각 op 에 full range 적용.
+# prob 은 기본 1.0 (모든 샘플에 모든 op 적용하되 uniform sampling 으로 강도 분산).
+# 특정 op 만 stacking 부작용 크니 prob 낮춤.
+
+base_source:
+  kind: font
+  filter: malgun
+
+style:
+  - layer: background.solid
+    color: [255, 255, 255]
+  - layer: fill.solid
+    color: [0, 0, 0]
+
+augment:
+  # --- Geometric (항상 적용 — 현실에서 흔한 기울기) ---
+  - op: rotate
+    angle: [-15, 15]
+  - op: perspective
+    strength: [0.04, 0.25]
+
+  # --- Photometric (항상 — min 근처면 원본 유지) ---
+  - op: brightness
+    factor: [0.6, 1.5]
+  - op: contrast
+    factor: [0.8, 1.5]
+
+  # --- Degradation ---
+  - op: gaussian_blur
+    sigma: [0.0, 2.0]
+  - op: motion_blur
+    kernel: [1, 5]
+    angle: [0, 180]
+    prob: 0.3              # blur 누적 방지 (gaussian_blur/defocus 와 stacking)
+  - op: gaussian_noise
+    std: [0, 25]
+  - op: jpeg
+    quality: [20, 98]      # user 요청: 하한 20으로 낮춤
+
+  # --- Camera sim ---
+  - op: defocus
+    radius: [0.0, 3.0]
+    prob: 0.5              # 위 블러들과 확률적 분산
+  - op: chromatic_aberration
+    shift: [-4, 4]
+  - op: lens_distort
+    k: [-0.12, 0.12]
+  - op: low_light
+    brightness: [0.35, 0.65]
+    noise_std: [5, 15]
+    prob: 0.3              # brightness 와 compounding 방지
+
+  # --- Deformation ---
+  - op: elastic
+    alpha: [4, 8]
+    sigma: [5, 7]
+    prob: 0.5              # 가끔만 적용

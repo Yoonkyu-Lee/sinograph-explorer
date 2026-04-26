@@ -1,0 +1,27 @@
+# 평가·robustness 테스트 전용. 학습 데이터로 쓰지 말 것.
+# drop_stroke로 획 탈락 시뮬 — 라벨 불변성 깨질 수 있음.
+# 용도: "획 하나 빠졌을 때 모델이 여전히 맞추는가 / confidence 낮게 출력하는가" 측정.
+base_source:
+  kind: svg_stroke
+  base_width: 48
+  stroke_ops:
+    - op: width_jitter
+      std: 6
+    - op: control_jitter
+      std: 4
+    - op: endpoint_jitter
+      std: 7
+    - op: stroke_rotate
+      angle_std: 3
+    - op: stroke_translate
+      std: 3
+    - op: drop_stroke
+      prob_per_stroke: 0.04   # 22획 평균 ~0.9개 drop
+
+style:
+  - layer: background.solid
+    color: [255, 255, 255]
+  - layer: fill.solid
+    color: [0, 0, 0]
+
+augment: []

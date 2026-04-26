@@ -1,0 +1,13 @@
+# Baseline — 아무 variation 없음. 순수 MakeMeAHanzi stroke geometry 그대로 렌더.
+base_source:
+  kind: svg_stroke
+  base_width: 48
+  stroke_ops: []
+
+style:
+  - layer: background.solid
+    color: [255, 255, 255]
+  - layer: fill.solid
+    color: [0, 0, 0]
+
+augment: []

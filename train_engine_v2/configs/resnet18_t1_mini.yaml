@@ -1,0 +1,35 @@
+# S2-B mini — top 1k classes (sorted notation, ~CJK Unified low codepoints)
+# × 5 epochs. Goal: first real-world inference test before midpoint.
+#
+# Throughput: ~3185 img/s steady (M4 winner config).
+# 1000 cls × 500 = 500k train + 50k val. Estimate 15~25 min total.
+
+run_name: mini_1k
+
+data:
+  manifest: d:/Library/01 Admissions/01 UIUC/4-2 SP26/ECE 479/lab3/synth_engine_v3/out/42_production_mobile/corpus_manifest.jsonl
+  image_root: d:/Library/01 Admissions/01 UIUC/4-2 SP26/ECE 479/lab3/synth_engine_v3/out/42_production_mobile
+  max_classes: 1000
+  val_ratio: 0.1
+  val_sources: null
+  decode: pil
+  gpu_transforms: true
+
+model:
+  name: resnet18
+  input_size: 128
+
+train:
+  batch_size: 256
+  num_workers: 8
+  epochs: 5
+  lr: 0.2
+  momentum: 0.9
+  weight_decay: 5.0e-4
+  label_smoothing: 0.1
+  amp: true
+
+eval:
+  every_epoch: 1
+
+out_dir: d:/Library/01 Admissions/01 UIUC/4-2 SP26/ECE 479/lab3/train_engine_v1/out/02_mini_1k

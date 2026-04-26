@@ -1,0 +1,41 @@
+{
+  "source": "CHISE IDS (UCS files)",
+  "source_files": [
+    "IDS-UCS-Basic.txt",
+    "IDS-UCS-Compat-Supplement.txt",
+    "IDS-UCS-Compat.txt",
+    "IDS-UCS-Ext-A.txt",
+    "IDS-UCS-Ext-B-1.txt",
+    "IDS-UCS-Ext-B-2.txt",
+    "IDS-UCS-Ext-B-3.txt",
+    "IDS-UCS-Ext-B-4.txt",
+    "IDS-UCS-Ext-B-5.txt",
+    "IDS-UCS-Ext-B-6.txt",
+    "IDS-UCS-Ext-C.txt",
+    "IDS-UCS-Ext-D.txt",
+    "IDS-UCS-Ext-E.txt",
+    "IDS-UCS-Ext-F.txt",
+    "IDS-UCS-Ext-G.txt",
+    "IDS-UCS-Ext-H.txt",
+    "IDS-UCS-Ext-I.txt",
+    "IDS-UCS-Ext-J.txt"
+  ],
+  "total_entries": 102892,
+  "unique_codepoints": 102892,
+  "multi_alternate_entries": 103,
+  "by_block": {
+    "CJK_Ext_B": 42719,
+    "CJK_Unified": 20992,
+    "CJK_Ext_F": 7473,
+    "CJK_Ext_A": 6592,
+    "CJK_Ext_E": 5774,
+    "CJK_Ext_G": 4939,
+    "CJK_Ext_J": 4298,
+    "CJK_Ext_H": 4192,
+    "CJK_Ext_C": 4160,
+    "CJK_Ext_I": 622,
+    "CJK_Compat_Supp": 542,
+    "CJK_Compat": 367,
+    "CJK_Ext_D": 222
+  }
+}

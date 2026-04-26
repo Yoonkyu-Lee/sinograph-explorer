@@ -1,0 +1,162 @@
+{
+  "policy": "Only OFL / SIL Open Font License fonts. No commercial or restricted-distribution faces.",
+  "target_dir": "db_src/fonts/external",
+  "fonts": [
+    {
+      "name": "NotoSerifKR-Regular",
+      "locale": "KR",
+      "style": "serif",
+      "family": "Noto Serif CJK",
+      "url": "https://github.com/notofonts/noto-cjk/raw/main/Serif/SubsetOTF/KR/NotoSerifKR-Regular.otf",
+      "filename": "NotoSerifKR-Regular.otf",
+      "license": "OFL 1.1"
+    },
+    {
+      "name": "NotoSerifKR-Bold",
+      "locale": "KR",
+      "style": "serif-bold",
+      "family": "Noto Serif CJK",
+      "url": "https://github.com/notofonts/noto-cjk/raw/main/Serif/SubsetOTF/KR/NotoSerifKR-Bold.otf",
+      "filename": "NotoSerifKR-Bold.otf",
+      "license": "OFL 1.1"
+    },
+    {
+      "name": "NotoSerifSC-Regular",
+      "locale": "SC",
+      "style": "serif",
+      "family": "Noto Serif CJK",
+      "url": "https://github.com/notofonts/noto-cjk/raw/main/Serif/SubsetOTF/SC/NotoSerifSC-Regular.otf",
+      "filename": "NotoSerifSC-Regular.otf",
+      "license": "OFL 1.1"
+    },
+    {
+      "name": "NotoSerifTC-Regular",
+      "locale": "TC",
+      "style": "serif",
+      "family": "Noto Serif CJK",
+      "url": "https://github.com/notofonts/noto-cjk/raw/main/Serif/SubsetOTF/TC/NotoSerifTC-Regular.otf",
+      "filename": "NotoSerifTC-Regular.otf",
+      "license": "OFL 1.1"
+    },
+    {
+      "name": "NotoSerifJP-Regular",
+      "locale": "JP",
+      "style": "serif",
+      "family": "Noto Serif CJK",
+      "url": "https://github.com/notofonts/noto-cjk/raw/main/Serif/SubsetOTF/JP/NotoSerifJP-Regular.otf",
+      "filename": "NotoSerifJP-Regular.otf",
+      "license": "OFL 1.1"
+    },
+    {
+      "name": "NanumMyeongjo-Regular",
+      "locale": "KR",
+      "style": "serif",
+      "family": "Nanum Myeongjo",
+      "url": "https://github.com/google/fonts/raw/main/ofl/nanummyeongjo/NanumMyeongjo-Regular.ttf",
+      "filename": "NanumMyeongjo-Regular.ttf",
+      "license": "OFL 1.1"
+    },
+    {
+      "name": "NanumMyeongjo-Bold",
+      "locale": "KR",
+      "style": "serif-bold",
+      "family": "Nanum Myeongjo",
+      "url": "https://github.com/google/fonts/raw/main/ofl/nanummyeongjo/NanumMyeongjo-Bold.ttf",
+      "filename": "NanumMyeongjo-Bold.ttf",
+      "license": "OFL 1.1"
+    },
+    {
+      "name": "NanumMyeongjo-ExtraBold",
+      "locale": "KR",
+      "style": "serif-extrabold",
+      "family": "Nanum Myeongjo",
+      "url": "https://github.com/google/fonts/raw/main/ofl/nanummyeongjo/NanumMyeongjo-ExtraBold.ttf",
+      "filename": "NanumMyeongjo-ExtraBold.ttf",
+      "license": "OFL 1.1"
+    },
+    {
+      "name": "NanumBrushScript-Regular",
+      "locale": "KR",
+      "style": "brush",
+      "family": "Nanum Brush Script",
+      "url": "https://github.com/google/fonts/raw/main/ofl/nanumbrushscript/NanumBrushScript-Regular.ttf",
+      "filename": "NanumBrushScript-Regular.ttf",
+      "license": "OFL 1.1"
+    },
+    {
+      "name": "NanumPenScript-Regular",
+      "locale": "KR",
+      "style": "pen",
+      "family": "Nanum Pen Script",
+      "url": "https://github.com/google/fonts/raw/main/ofl/nanumpenscript/NanumPenScript-Regular.ttf",
+      "filename": "NanumPenScript-Regular.ttf",
+      "license": "OFL 1.1"
+    },
+    {
+      "name": "SongMyung-Regular",
+      "locale": "KR",
+      "style": "serif",
+      "family": "Song Myung",
+      "url": "https://github.com/google/fonts/raw/main/ofl/songmyung/SongMyung-Regular.ttf",
+      "filename": "SongMyung-Regular.ttf",
+      "license": "OFL 1.1"
+    },
+    {
+      "name": "GowunBatang-Regular",
+      "locale": "KR",
+      "style": "serif",
+      "family": "Gowun Batang",
+      "url": "https://github.com/google/fonts/raw/main/ofl/gowunbatang/GowunBatang-Regular.ttf",
+      "filename": "GowunBatang-Regular.ttf",
+      "license": "OFL 1.1"
+    },
+    {
+      "name": "GowunBatang-Bold",
+      "locale": "KR",
+      "style": "serif-bold",
+      "family": "Gowun Batang",
+      "url": "https://github.com/google/fonts/raw/main/ofl/gowunbatang/GowunBatang-Bold.ttf",
+      "filename": "GowunBatang-Bold.ttf",
+      "license": "OFL 1.1"
+    },
+    {
+      "name": "BabelStoneHan",
+      "locale": "INT",
+      "style": "serif-wide",
+      "family": "BabelStone Han",
+      "url": "https://www.babelstone.co.uk/Fonts/Download/BabelStoneHan.ttf",
+      "filename": "BabelStoneHan.ttf",
+      "license": "Arphic Public License (OFL-compatible)",
+      "notes": "Comprehensive CJK coverage (Unified + Ext A-H), serif-ish Ming style. 52 MB."
+    },
+    {
+      "name": "PlangothicP1-Regular",
+      "locale": "INT",
+      "style": "sans-wide",
+      "family": "Plangothic",
+      "url": "https://github.com/Fitzgerald-Porthmouth-Koenigsegg/Plangothic-Project/releases/latest/download/PlangothicP1-Regular.ttf",
+      "filename": "PlangothicP1-Regular.ttf",
+      "license": "OFL 1.1",
+      "notes": "Wide CJK sans — covers Ext A-I. 20 MB."
+    },
+    {
+      "name": "SourceHanSerifKR-Regular",
+      "locale": "KR",
+      "style": "serif",
+      "family": "Source Han Serif",
+      "url": "https://github.com/adobe-fonts/source-han-serif/raw/release/SubsetOTF/KR/SourceHanSerifKR-Regular.otf",
+      "filename": "SourceHanSerifKR-Regular.otf",
+      "license": "OFL 1.1",
+      "notes": "Adobe Source Han Serif (glyphs source-shared with Noto but separately built)."
+    },
+    {
+      "name": "SourceHanSansCN-Regular",
+      "locale": "CN",
+      "style": "sans",
+      "family": "Source Han Sans",
+      "url": "https://github.com/adobe-fonts/source-han-sans/raw/release/SubsetOTF/CN/SourceHanSansCN-Regular.otf",
+      "filename": "SourceHanSansCN-Regular.otf",
+      "license": "OFL 1.1"
+    }
+  ]
+}

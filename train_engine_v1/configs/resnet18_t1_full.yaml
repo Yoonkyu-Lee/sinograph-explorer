@@ -1,0 +1,36 @@
+# S2-C production — full T1 (10,932 classes × ~500 samples = 5.47M).
+# Target: final demo top-1/top-5 + family-aware evaluation.
+#
+# Throughput config = M4 winner (PIL decode + uint8 IPC + GPU normalize).
+# See train_engine_v1/MANUAL.md "Multi-epoch 검증 (M1~M5)" for derivation.
+# Pilot steady ~3185 img/s; production estimate 18~25 hours (cold cache dominant).
+
+run_name: prod_t1
+
+data:
+  manifest: d:/Library/01 Admissions/01 UIUC/4-2 SP26/ECE 479/lab3/synth_engine_v3/out/42_production_mobile/corpus_manifest.jsonl
+  image_root: d:/Library/01 Admissions/01 UIUC/4-2 SP26/ECE 479/lab3/synth_engine_v3/out/42_production_mobile
+  max_classes: null
+  val_ratio: 0.1
+  val_sources: null   # set to a list of picked_source strings (e.g. ["malgun-0","malgun-1"]) for font-unseen split
+  decode: pil
+  gpu_transforms: true   # uint8 IPC + GPU normalize, ~2x steady throughput vs all-CPU
+
+model:
+  name: resnet18
+  input_size: 128
+
+train:
+  batch_size: 256
+  num_workers: 8
+  epochs: 20
+  lr: 0.2
+  momentum: 0.9
+  weight_decay: 5.0e-4
+  label_smoothing: 0.1
+  amp: true
+
+eval:
+  every_epoch: 1
+
+out_dir: d:/Library/01 Admissions/01 UIUC/4-2 SP26/ECE 479/lab3/train_engine_v1/out/03_prod_t1

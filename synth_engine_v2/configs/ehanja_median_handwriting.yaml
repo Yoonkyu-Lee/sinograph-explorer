@@ -1,0 +1,30 @@
+# e-hanja → skeletonize → medians + widths (Phase 5).
+# Rendering uses the legacy median-based svg_stroke rasterizer (thick
+# polylines with rounded caps) — gives MMH-style natural handwriting feel
+# on e-hanja's wider char coverage.
+
+base_source:
+  kind: ehanja_median
+  # e-hanja 실측 획 두께는 MMH default(48)보다 얇음 (평균 30/1152).
+  # MMH 처럼 통통한 느낌 원하면 width_scale 1.5~1.7 권장.
+  width_scale: 1.5
+  # 기존 MMH handwriting.yaml 과 동일 값 — 획 단위 자연스러운 variation.
+  stroke_ops:
+    - op: width_jitter
+      std: 5
+    - op: control_jitter
+      std: 3
+    - op: endpoint_jitter
+      std: 5
+    - op: stroke_rotate
+      angle_std: 2
+    - op: stroke_translate
+      std: 2.5
+
+style:
+  - layer: background.solid
+    color: [255, 255, 255]
+  - layer: fill.solid
+    color: [0, 0, 0]
+
+augment: []

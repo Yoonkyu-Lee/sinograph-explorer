@@ -1,0 +1,27 @@
+# 포스터 스타일: 두꺼운 외곽선 + 따뜻한 그라디언트 + 그림자.
+# v1의 `gradient_warm`과 `drop_shadow`와 `outline_thick`를 합성.
+# 여러 레이어를 쌓는 v2의 첫 번째 진짜 예시.
+base_source:
+  kind: font
+  filter: all
+
+style:
+  - layer: background.solid
+    color: [248, 240, 220]              # 종이톤
+
+  - layer: shadow.drop
+    offset: [[4, 4], [8, 8]]            # per-sample 랜덤 오프셋
+    blur: [4, 7]
+    color: [90, 40, 30]
+
+  - layer: stroke_weight.dilate
+    radius: [1, 2]
+
+  - layer: fill.gradient
+    start: [230, 100, 40]
+    end: [90, 20, 80]
+    direction: vertical
+
+  - layer: outline.simple
+    radius: [2, 4]
+    color: [30, 10, 10]

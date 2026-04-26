@@ -1,0 +1,28 @@
+# 자연스러운 악필/필기체 variation generator.
+# 획 단위 연속 perturbation만 사용 — 라벨 불변성 유지.
+# OCR 학습 데이터 생성용 권장 기본 config.
+#
+# 제외된 것: drop_stroke (획 탈락). 글자 정체성을 훼손해 라벨 노이즈 발생.
+# 훼손 시뮬이 필요하면 stroke_stress.yaml 사용 (평가 전용).
+base_source:
+  kind: svg_stroke
+  base_width: 48
+  stroke_ops:
+    - op: width_jitter
+      std: 5              # 획마다 두께가 다름
+    - op: control_jitter
+      std: 3              # 획의 waypoint가 살짝씩 이동 → 곡선화
+    - op: endpoint_jitter
+      std: 5              # 획 끝점 추가 흔들림
+    - op: stroke_rotate
+      angle_std: 2        # 획별 미세 회전
+    - op: stroke_translate
+      std: 2.5            # 획 전체 살짝 이동
+
+style:
+  - layer: background.solid
+    color: [255, 255, 255]
+  - layer: fill.solid
+    color: [0, 0, 0]
+
+augment: []

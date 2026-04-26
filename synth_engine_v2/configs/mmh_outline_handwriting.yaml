@@ -1,0 +1,22 @@
+# MakeMeAHanzi outline-based (Phase 3b). Same stroke-level variation, but
+# uses true outline polygons instead of median thick-polylines.
+
+base_source:
+  kind: mmh_stroke
+  stroke_ops:
+    - op: control_jitter
+      std: 2.5
+    - op: stroke_translate
+      std: 2.0
+    - op: stroke_rotate
+      angle_std: 2.0
+    - op: width_jitter
+      radius_std: 1.0
+
+style:
+  - layer: background.solid
+    color: [255, 255, 255]
+  - layer: fill.solid
+    color: [0, 0, 0]
+
+augment: []

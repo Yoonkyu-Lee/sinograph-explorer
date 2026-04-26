@@ -1,0 +1,43 @@
+# v3 Level A smoke — 최소 단위로 전체 파이프라인이 도는지 검증.
+# Goal:
+#   (a) shard 읽기 OK
+#   (b) aux_labels.npz 로드 + hash 일치 OK
+#   (c) MultiHead forward + 5-head loss 수렴 방향 OK
+#   (d) per-head metric 계산 OK
+#
+# Scope: 첫 4 shard 만 사용, 1 epoch. ~20,000 샘플 수준. RTX GPU 기준 1-2 분.
+
+run_name: level_a_smoke
+
+data:
+  format: tensor_shard
+  shard_dir: d:/Library/01 Admissions/01 UIUC/4-2 SP26/ECE 479/lab3/synth_engine_v3/out/80_production_v3r_shard256
+  aux_labels: d:/Library/01 Admissions/01 UIUC/4-2 SP26/ECE 479/lab3/synth_engine_v3/out/80_production_v3r_shard256/aux_labels.npz
+  max_shards: 4                  # smoke 전용 — 4 shard = 약 20k 샘플
+  val_ratio: 0.25                # 4 → 3 train + 1 val
+
+model:
+  name: resnet18
+  input_size: 192                # Follow-up 1: v3 는 192 해상도 학습
+
+train:
+  batch_size: 128
+  num_workers: 4
+  epochs: 1
+  lr: 0.1
+  momentum: 0.9
+  weight_decay: 5.0e-4
+  label_smoothing: 0.1
+  amp: true
+
+loss_weights:
+  char: 1.0
+  radical: 0.2
+  total: 0.1
+  residual: 0.1
+  idc: 0.2
+
+eval:
+  every_epoch: 1
+
+out_dir: d:/Library/01 Admissions/01 UIUC/4-2 SP26/ECE 479/lab3/train_engine_v3/out/00_smoke

@@ -1,0 +1,16 @@
+# Elastic distortion 단독 — 중간 강도 (명확히 악필 인식됨)
+base_source:
+  kind: svg_stroke
+  base_width: 48
+  stroke_ops: []
+
+style:
+  - layer: background.solid
+    color: [255, 255, 255]
+  - layer: fill.solid
+    color: [0, 0, 0]
+
+augment:
+  - op: elastic
+    alpha: [10, 16]
+    sigma: [5, 7]

@@ -1,0 +1,192 @@
+# =============================================================
+# Python
+# =============================================================
+.venv/
+.venv_tflite/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# =============================================================
+# IDE / Editor / OS junk
+# =============================================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# =============================================================
+# Logs & temp / 개인 작업 메모
+# =============================================================
+*.log
+log.log
+tmp/
+tmp_*/
+tmp_experiment/
+tmp_smoke/
+codex.txt
+command.md
+
+# Claude Code 로컬 설정 (per-machine, permission override 포함)
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+.claude/scheduled_tasks/
+
+# =============================================================
+# Node / Tauri (unihan_graph_viewer)
+# =============================================================
+node_modules/
+dist/
+**/src-tauri/target/
+**/src-tauri/gen/
+
+# =============================================================
+# db_mining — reverse-engineering tools, raw scrapes, encrypted dumps
+# 모두 외부 도구 / 원본 자산 / 다시 받을 수 있는 raw data
+# =============================================================
+
+# RE tools (jadx, apktool 등)
+db_mining/RE_e-hanja/jadx-1.5.5/
+db_mining/RE_e-hanja/jadx_out/
+db_mining/RE_e-hanja/apktool.jar
+db_mining/RE_e-hanja/lib*.so
+
+# APK / encrypted DB dumps (라이선스상 재배포 불가)
+db_mining/RE_e-hanja/*.apk
+db_mining/RE_e-hanja/*.apk.idsig
+db_mining/RE_e-hanja/*.dat
+db_mining/RE_e-hanja/*.bin
+db_mining/RE_e-hanja/screen.png
+
+# Online scrape raw data (재수집 가능, 사이트 부하 주의)
+db_mining/RE_e-hanja_online/data/
+db_mining/RE_e-hanja_online/logs/
+db_mining/RE_e-hanja_online/samples/
+
+# IDS source git clones / 원본 txt
+db_mining/RE_babelstone_ids/data/
+db_mining/RE_chise_ids/data/
+db_mining/RE_cjkvi_ids/data/
+
+# KanjiVG SVG pull
+db_mining/kanjivg_extract/data/
+
+# =============================================================
+# db_src — 원본 raw / 파생 대용량 자산
+# 매뉴얼 / 스크립트 / 작은 메타데이터만 commit
+# =============================================================
+
+# 폰트 (download_external.py 로 재현 가능)
+db_src/fonts/external/*.ttf
+db_src/fonts/external/*.otf
+db_src/fonts/external/*.ttc
+
+# Unihan raw
+db_src/Unihan/Unihan.zip
+db_src/Unihan/Unihan_txt/
+
+# CNS11643 raw (대만 정부 zip + 매핑 테이블)
+db_src/CNS11643/MapingTables/
+db_src/CNS11643/Properties/CNS_*.txt
+db_src/CNS11643/Properties/CNS_*.zip
+db_src/CNS11643/全字庫屬性資料說明文件.txt
+
+# e-hanja 앱 추출 (SQLite + CSV + 이미지 zip)
+db_src/e-hanja/ejajeon_csv/
+db_src/e-hanja/ejajeon_plain.db
+db_src/e-hanja/*.zip
+
+# e-hanja_online (76k SVG + 모든 대형 JSONL)
+db_src/e-hanja_online/svg/
+db_src/e-hanja_online/*.jsonl
+
+# KanjiVG (11k SVG + median JSONL)
+db_src/KanjiVG/kanji/
+db_src/KanjiVG/strokes_kanjivg.jsonl
+db_src/KanjiVG/extract_anomalies.jsonl
+db_src/KanjiVG/kvg-index.json
+
+# KANJIDIC2 raw XML
+db_src/KANJIDIC2/KANJIDIC2_xml/
+
+# MakeMeAHanzi (JSONL 2종)
+db_src/MAKEMEAHANZI/dictionary.txt
+db_src/MAKEMEAHANZI/graphics.txt
+
+# MOE 대형 워크북 / 이체자 list
+db_src/MOE_REVISED_DICT/*.xlsx
+db_src/MOE_VARIANTS/list.txt
+
+# IDS 정제본 (3 source × 100k entries)
+db_src/babelstone_ids/ids.jsonl
+db_src/babelstone_ids/ids_primary.jsonl
+db_src/chise_ids/ids.jsonl
+db_src/chise_ids/ids_primary.jsonl
+db_src/cjkvi_ids/ids.jsonl
+db_src/cjkvi_ids/ids_primary.jsonl
+
+# =============================================================
+# sinograph_canonical — 빌드 산출물 (SQLite, JSONL)
+# scripts/schema/staging/tests 는 commit, out 만 ignore
+# =============================================================
+sinograph_canonical_v1/out/
+sinograph_canonical_v2/out/
+sinograph_canonical_v3/out/
+**/staging/
+
+# =============================================================
+# synth_engine — 생성 데이터셋 (수십 GB)
+# =============================================================
+synth_engine_v1/out/
+synth_engine_v2/out/
+synth_engine_v3/out/
+synth_engine_v2/samples/
+**/test_img/
+
+# =============================================================
+# train_engine — 모델 체크포인트 / 학습 산출물
+# =============================================================
+train_engine_v1/out/
+train_engine_v2/out/
+train_engine_v3/out/
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+
+# =============================================================
+# deploy_pi — 배포용 모델 (ONNX / TFLite / saved_model, release 따로 관리)
+# class_index.json 만 명시적으로 유지 (inference label map)
+# =============================================================
+deploy_pi/export/*.onnx
+deploy_pi/export/**/*.tflite
+deploy_pi/export/**/*.tflite.*
+deploy_pi/export/**/saved_model.pb
+deploy_pi/export/**/fingerprint.pb
+deploy_pi/export/**/variables/
+
+# =============================================================
+# 기타 large generated
+# =============================================================
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+!**/schema/*.sql
+*.zip
+*.tar
+*.tar.gz
+*.7z
+
+# 실험 폴더 (강사 / 동료 발표 자료)
+presentation example/

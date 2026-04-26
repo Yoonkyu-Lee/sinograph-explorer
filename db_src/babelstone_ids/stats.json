@@ -1,0 +1,20 @@
+{
+  "source": "BabelStone IDS",
+  "source_file": "d:\\Library\\01 Admissions\\01 UIUC\\4-2 SP26\\ECE 479\\lab3\\db_mining\\RE_babelstone_ids\\data\\IDS.TXT",
+  "total_entries": 97649,
+  "unique_codepoints": 97649,
+  "multi_alternate_entries": 9525,
+  "by_block": {
+    "CJK_Ext_B": 42718,
+    "CJK_Unified": 20965,
+    "CJK_Ext_F": 7473,
+    "CJK_Ext_A": 6590,
+    "CJK_Ext_E": 5762,
+    "CJK_Ext_G": 4939,
+    "CJK_Ext_H": 4192,
+    "CJK_Ext_C": 4154,
+    "CJK_Ext_I": 622,
+    "CJK_Ext_D": 222,
+    "CJK_Compat": 12
+  }
+}

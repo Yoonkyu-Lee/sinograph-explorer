@@ -1,0 +1,35 @@
+# v2 production — 전체 T1 (10,932 classes × 500 samples = 5.47M).
+# v3r tensor_shard corpus 기반.
+#
+# 예상 throughput: PIL path (M4) 의 2-3x 빠름 (decode 제거) → 6000~10000 img/s
+# Production 추정: 5.47M × 20 epoch / 8000 img/s ≈ 4 h (PIL path 는 13 h)
+# Lab2 epoch 10 근거 없는 기본값 — 우리는 class 수 1000x 많아 20 epoch 로 scaling.
+
+run_name: v3r_prod_t1
+
+data:
+  format: tensor_shard
+  shard_dir: d:/Library/01 Admissions/01 UIUC/4-2 SP26/ECE 479/lab3/synth_engine_v3/out/80_production_v3r_shard256
+  val_ratio: 0.1
+  # val_sources 는 shard 단위 split 에서는 사용 불가 (shard 단위로 split 됨)
+  # font-unseen 평가가 필요하면 별도 evaluation 스크립트 + 원본 manifest 필터
+
+model:
+  name: resnet18
+  input_size: 128    # GPU 에서 shard(256) → 128 resize
+
+train:
+  batch_size: 512        # v2 default: 256 대비 VRAM 여유 있고 per-step overhead amortize
+  num_workers: 8
+  epochs: 20
+  lr: 0.4                # linear scaling rule: bs 2x → lr 2x (원 0.2 @ bs256)
+  momentum: 0.9
+  weight_decay: 5.0e-4
+  label_smoothing: 0.1
+  amp: true
+  # prefetch_factor: null (default 2)
+
+eval:
+  every_epoch: 1     # best-ckpt tracking 위해 매 epoch eval
+
+out_dir: d:/Library/01 Admissions/01 UIUC/4-2 SP26/ECE 479/lab3/train_engine_v2/out/03_v3r_prod_t1

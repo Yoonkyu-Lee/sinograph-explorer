@@ -1,0 +1,12 @@
+# Pi-side inference dependencies (lightweight — no full TensorFlow)
+# Install on Pi: pip install -r requirements_pi.txt
+tflite-runtime>=2.14
+numpy>=1.24
+Pillow>=10.0
+
+# For Coral Edge TPU support (optional), install ONE of:
+#   sudo apt-get install libedgetpu1-std        # standard speed (safer, cooler)
+#   sudo apt-get install libedgetpu1-max        # max speed (hot, requires good thermal)
+# Then the Python side just needs tflite-runtime (load_delegate handles Coral).
+# pycoral is an optional higher-level wrapper:
+#   pip install pycoral

@@ -1,0 +1,25 @@
+# 실제 카메라 촬영을 흉내내는 복합 augment.
+# 손떨림 + 각도 + 렌즈 결함 + 압축 + 조명.
+augment:
+  - op: perspective
+    strength: [0.04, 0.15]
+  - op: rotate
+    angle: [-8, 8]
+  - op: lens_distort
+    k: [-0.05, 0.05]
+  - op: brightness
+    factor: [0.6, 1.2]
+  - op: contrast
+    factor: [0.8, 1.2]
+  - op: defocus
+    radius: [0.0, 1.8]
+  - op: motion_blur
+    kernel: [1, 7]
+    angle: [0, 180]
+    prob: 0.5
+  - op: gaussian_noise
+    std: [2, 12]
+  - op: chromatic_aberration
+    shift: [-2, 2]
+  - op: jpeg
+    quality: [40, 90]

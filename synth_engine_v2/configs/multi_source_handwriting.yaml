@@ -1,0 +1,84 @@
+# 글자마다 랜덤으로 소스 선택 — 폰트(인쇄체) + 3개 SVG median 백엔드(손글씨).
+# 모델이 인쇄체·손글씨 양쪽에 노출되도록 혼합 비율 구성.
+# char 가 특정 소스에 없으면 그 소스 그룹은 가중치에서 자동 배제됨.
+# 전부 없으면 fallback=font 로 떨어짐 (거의 모든 char 커버).
+
+base_source:
+  kind: multi
+  fallback: font
+  sources:
+    - kind: font
+      filter: all
+      weight: 5.0            # 인쇄체 ~50%
+
+    # 길이 비례 (std_ratio) — 획 짧은 점은 덜 흔들리고 긴 획은 적절히 흔들림
+    - kind: svg_stroke
+      base_width: 48
+      stroke_ops:
+        - op: width_jitter
+          std: 5
+        - op: control_jitter
+          std_ratio: 0.020
+          std_min: 0.8
+          std_max: 10.0
+        - op: endpoint_jitter
+          std_ratio: 0.030
+          std_min: 1.5
+          std_max: 15.0
+        - op: stroke_rotate
+          angle_std: 2
+        - op: stroke_translate
+          std_ratio: 0.015
+          std_min: 0.5
+          std_max: 8.0
+      weight: 2.0
+
+    - kind: ehanja_median
+      width_scale: 1.5
+      stroke_ops:
+        - op: width_jitter
+          std: 5
+        - op: control_jitter
+          std_ratio: 0.020
+          std_min: 0.8
+          std_max: 10.0
+        - op: endpoint_jitter
+          std_ratio: 0.030
+          std_min: 1.5
+          std_max: 15.0
+        - op: stroke_rotate
+          angle_std: 2
+        - op: stroke_translate
+          std_ratio: 0.015
+          std_min: 0.5
+          std_max: 8.0
+      weight: 2.0
+
+    - kind: kanjivg_median
+      width_scale: 1.7
+      stroke_ops:
+        - op: width_jitter
+          std: 0.5
+        - op: control_jitter
+          std_ratio: 0.020
+          std_min: 0.1
+          std_max: 1.2
+        - op: endpoint_jitter
+          std_ratio: 0.030
+          std_min: 0.2
+          std_max: 1.8
+        - op: stroke_rotate
+          angle_std: 2
+        - op: stroke_translate
+          std_ratio: 0.015
+          std_min: 0.05
+          std_max: 1.0
+      weight: 1.0
+
+style:
+  - layer: background.solid
+    color: [255, 255, 255]
+  - layer: fill.solid
+    color: [0, 0, 0]
+
+augment: []

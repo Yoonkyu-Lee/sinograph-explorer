@@ -1,0 +1,30 @@
+# S2-A pilot — code smoke, first 100 classes of the production manifest.
+# Target: midpoint "loss curve exists" evidence.
+
+run_name: pilot_mini
+
+data:
+  manifest: d:/Library/01 Admissions/01 UIUC/4-2 SP26/ECE 479/lab3/synth_engine_v3/out/42_production_mobile/corpus_manifest.jsonl
+  image_root: d:/Library/01 Admissions/01 UIUC/4-2 SP26/ECE 479/lab3/synth_engine_v3/out/42_production_mobile
+  max_classes: 100
+  val_ratio: 0.1
+  val_sources: null   # null = random split. later: list of picked_source strings for font-unseen.
+
+model:
+  name: resnet18
+  input_size: 128
+
+train:
+  batch_size: 128
+  num_workers: 4
+  epochs: 5
+  lr: 0.1
+  momentum: 0.9
+  weight_decay: 5.0e-4
+  label_smoothing: 0.1
+  amp: true
+
+eval:
+  every_epoch: 1
+
+out_dir: d:/Library/01 Admissions/01 UIUC/4-2 SP26/ECE 479/lab3/train_engine_v1/out/01_pilot_mini

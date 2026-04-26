@@ -1,0 +1,215 @@
+# Production config — full_random_v2 style/augment + multi-source base.
+# - 인쇄체 (font) + 3개 SVG stroke DB 의 median 기반 백엔드 랜덤 선택
+# - style/augment 전체 파이프라인 그대로 상속 (배경/채움/그림자/글로우/외곽선 + blur/노이즈/JPEG/카메라 왜곡/elastic)
+# - 매 샘플이 소스 × 스타일 × augment 의 독립 조합
+# - 글자당 가용 소스만으로 재정규화 (한자 X Hiragana → MMH/ehanja 자동 제외)
+
+base_source:
+  kind: multi
+  fallback: font
+  sources:
+    - kind: font
+      filter: all
+      weight: 5.0
+
+    # 아래 3 소스는 std_ratio 로 길이 비례 jitter — 같은 ratio 로 3 소스 모두 자연스럽게 나옴
+    # (MMH box 1024, e-hanja 1152, KanjiVG 109 의 스케일 차이를 자동 흡수)
+
+    - kind: svg_stroke
+      base_width: 48
+      stroke_ops:
+        - op: width_jitter
+          std: 5                       # width 는 length-independent 이므로 절대값 유지
+        - op: control_jitter
+          std_ratio: 0.020             # 획 길이의 2%
+          std_min: 0.8
+          std_max: 10.0
+        - op: endpoint_jitter
+          std_ratio: 0.030             # 3%
+          std_min: 1.5
+          std_max: 15.0
+        - op: stroke_rotate
+          angle_std: 2
+        - op: stroke_translate
+          std_ratio: 0.015             # 1.5%
+          std_min: 0.5
+          std_max: 8.0
+      weight: 2.0
+
+    - kind: ehanja_median
+      width_scale: 1.5
+      stroke_ops:
+        - op: width_jitter
+          std: 5
+        - op: control_jitter
+          std_ratio: 0.020
+          std_min: 0.8
+          std_max: 10.0
+        - op: endpoint_jitter
+          std_ratio: 0.030
+          std_min: 1.5
+          std_max: 15.0
+        - op: stroke_rotate
+          angle_std: 2
+        - op: stroke_translate
+          std_ratio: 0.015
+          std_min: 0.5
+          std_max: 8.0
+      weight: 2.0
+
+    - kind: kanjivg_median
+      width_scale: 1.7
+      stroke_ops:
+        - op: width_jitter
+          std: 0.5                     # KanjiVG 는 box 109 이므로 width 는 여전히 1/10 스케일
+        - op: control_jitter
+          std_ratio: 0.020             # ratio 는 소스 무관 동일
+          std_min: 0.1
+          std_max: 1.2
+        - op: endpoint_jitter
+          std_ratio: 0.030
+          std_min: 0.2
+          std_max: 1.8
+        - op: stroke_rotate
+          angle_std: 2
+        - op: stroke_translate
+          std_ratio: 0.015
+          std_min: 0.05
+          std_max: 1.0
+      weight: 1.0
+
+# Stratified corpus 용 기본 블록 weights — 한자 비중 높게, 가나·부수 보강.
+# --block-weights-json 으로 CLI 에서 override 가능.
+corpus:
+  block_weights:
+    CJK_Unified:      3.0
+    CJK_Ext_A:        1.0
+    CJK_Compat:       0.5
+    Ext_B_SMP:        0.3
+    Ext_C_SMP:        0.2
+    Ext_D_SMP:        0.2
+    Ext_E_SMP:        0.1
+    Radicals_Supp:    0.2
+    Kangxi_Radicals:  0.2
+    Hiragana:         2.0          # 블록 크기 90자 — 반대로 과샘플
+    Katakana:         2.0          # 94자
+    Other:            0.3
+
+style:
+  # --- 배경 (순서: solid 기본 → noise/gradient/stripe/lines 가 확률적으로 덮어씀) ---
+  - layer: background.solid
+    color: [255, 255, 255]
+  - layer: background.noise
+    scale: [0.2, 0.8]
+    prob: 0.12
+  - layer: background.gradient
+    start: [240, 220, 180]
+    end: [180, 210, 240]
+    direction: vertical
+    prob: 0.12
+  - layer: background.stripe
+    thickness: [20, 40]
+    angle: [0, 0]
+    color_a: [255, 255, 255]
+    color_b: [230, 235, 240]
+    prob: 0.10
+  - layer: background.lines
+    spacing: [22, 35]
+    line_width: [1, 2]
+    angle: [0, 0]
+    base_color: [255, 255, 250]
+    line_color: [180, 200, 230]
+    prob: 0.08
+  - layer: background.scene
+    folder: samples/backgrounds
+    mode: random_crop
+    scale_jitter: [1.0, 2.0]
+    dim: [0.1, 0.4]
+    desaturate: [0.0, 0.5]
+    blur: [0.0, 1.5]
+    prob: 0.25
+
+  # --- 획 두께 변이 ---
+  - layer: stroke_weight.dilate
+    radius: [0, 3]
+    prob: 0.3
+
+  # --- 그림자 ---
+  - layer: shadow.drop
+    offset: [[2, 2], [8, 8]]
+    blur: [2, 6]
+    color: [70, 70, 70]
+    prob: 0.25
+
+  # --- 네온 글로우 ---
+  - layer: glow.outer
+    color: [0, 200, 255]
+    dilate: [2, 5]
+    blur: [5, 12]
+    prob: 0.1
+
+  # --- contrast-aware HSV 난수 채움 ---
+  - layer: fill.hsv_contrast
+    threshold: 160
+    saturation: [0.5, 1.0]
+    value: [0.0, 1.0]
+    sample_region: mask_dilated
+    use_median: true
+    min_contrast: 60
+    max_attempts: 8
+  - layer: fill.gradient
+    start: [220, 60, 40]
+    end: [40, 60, 220]
+    direction: vertical
+    prob: 0.15
+
+  # --- 외곽선 ---
+  - layer: outline.simple
+    radius: [1, 3]
+    color: [0, 0, 0]
+    prob: 0.25
+
+augment:
+  - op: rotate
+    angle: [-10, 10]
+  - op: perspective
+    strength: [0.04, 0.25]
+
+  - op: brightness
+    factor: [0.9, 1.4]
+  - op: contrast
+    factor: [0.85, 1.3]
+
+  - op: gaussian_blur
+    sigma: [0.0, 2.0]
+    prob: 0.6
+  - op: motion_blur
+    kernel: [1, 5]
+    angle: [0, 180]
+    prob: 0.25
+  - op: gaussian_noise
+    std: [0, 25]
+  - op: jpeg
+    quality: [20, 98]
+
+  - op: defocus
+    radius: [0.0, 3.0]
+    prob: 0.3
+  - op: chromatic_aberration
+    shift: [-4, 4]
+    prob: 0.4
+  - op: lens_distort
+    k: [-0.12, 0.12]
+    prob: 0.5
+  - op: low_light
+    brightness: [0.35, 0.65]
+    noise_std: [5, 15]
+    prob: 0.2
+
+  - op: elastic
+    alpha: [4, 8]
+    sigma: [5, 7]
+    prob: 0.3
+    # 필체 소스는 이미 per-stroke jitter 로 자연스러운 떨림이 있음 → elastic 이
+    # 더해지면 이중 왜곡. 인쇄체(font) 와 outline 기반에만 적용.
+    skip_if_kinds: [svg_stroke, ehanja_median, kanjivg_median]

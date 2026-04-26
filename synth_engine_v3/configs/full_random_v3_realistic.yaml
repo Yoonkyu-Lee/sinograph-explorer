@@ -1,0 +1,156 @@
+# v3 realistic — v3 기본 config (full_random_v3.yaml) 의 real-world augment 연장선.
+# 2026-04-20 확장. 동일 v3 engine 사용, style/augment 항목만 추가.
+#
+# v3 대비 추가한 것:
+#   - saturated background palette (red/yellow/blue/green 네온 간판 모사)
+#   - outline.double (이중 외곽선 — 간판체 전형)
+#   - glow.neon (네온 효과)
+#   - aug_invert prob 0.25 (dark-on-light ↔ light-on-dark)
+#   - aug_motion_blur prob 0.2 (카메라 흔들림)
+#   - aug_paper_texture / aug_binarize (문서 scan 시뮬)
+#   - jpeg prob 1.0 → 0.6 (실사진에서 항상 JPEG 아님)
+#
+# 기대 효과: Mini 에서 Sign 1 (빨간 간판 中) 7.9% → 50%+ 개선.
+# 기존 rare hanzi 성능 (𤴡 86%) 은 유지되어야 함 — augment 확률적이라 clean 샘플도 충분히 유지.
+
+base_source:
+  kind: font
+
+style:
+  # 배경: 기본 흰색 바탕 → 20% 확률로 saturated color 덮어씀
+  - layer: background.solid
+    color: [255, 255, 255]
+  - layer: background.solid
+    color:
+      - [220, 30, 30]      # 네온 빨강 (중식당)
+      - [230, 180, 30]     # 황색 (공사장/경고)
+      - [40, 80, 220]      # 도로표지 파랑
+      - [50, 150, 80]      # 간판 초록
+      - [20, 20, 20]       # 어두운 black-board
+      - [140, 90, 60]      # 구리/나무 느낌
+    prob: 0.25
+
+  - layer: background.noise
+    scale: [0.2, 0.8]
+    prob: 0.10
+
+  - layer: background.gradient
+    start: [240, 220, 180]
+    end: [180, 210, 240]
+    direction: vertical
+    prob: 0.10
+
+  - layer: stroke_weight.dilate
+    amount: [0, 2]
+    prob: 0.3
+
+  - layer: shadow.drop
+    offset: [2, 8]
+    blur: [2, 6]
+    color: [70, 70, 70]
+    prob: 0.25
+
+  - layer: glow.outer
+    color: [0, 200, 255]
+    radius: [2, 5]
+    blur: [5, 10]
+    strength: [0.4, 0.8]
+    prob: 0.08
+
+  # 네온 효과 — 네온 간판 전형 (outer glow + bright inner core)
+  - layer: glow.neon
+    color:
+      - [255, 40, 40]
+      - [40, 255, 40]
+      - [40, 140, 255]
+      - [255, 220, 40]
+    outer_dilate: [2, 5]
+    outer_blur: [6, 12]
+    inner_blur: [2, 5]
+    core_color: [255, 255, 255]
+    prob: 0.08
+
+  # 채움: 기본 HSV 대비 채움. 글자색/배경색 상관 contrast ≥ 60 보장
+  - layer: fill.hsv_contrast
+    threshold: 160
+    saturation: [0.5, 1.0]
+    value: [0.0, 1.0]
+    min_contrast: 60
+    max_attempts: 8
+
+  # 단순 외곽선 (얇음)
+  - layer: outline.simple
+    width: [1, 2]
+    color: [0, 0, 0]
+    prob: 0.25
+
+  # 이중 외곽선 (간판/스티커 전형). outer 는 밝은 색, inner 는 어두운 색
+  - layer: outline.double
+    outer_offset: [3, 6]
+    outer_width: [1, 3]
+    inner_width: [1, 2]
+    outer_color:
+      - [255, 255, 255]      # 흰색 외곽
+      - [240, 240, 200]      # 크림
+    inner_color:
+      - [0, 0, 0]            # 검정
+      - [60, 20, 20]         # 어두운 갈색
+    prob: 0.15
+
+augment:
+  - op: rotate
+    angle: [-10, 10]
+  - op: perspective
+    strength: [0.04, 0.2]
+
+  - op: brightness
+    factor: [0.9, 1.4]
+  - op: contrast
+    factor: [0.85, 1.3]
+
+  # 반전: 색 반전 (dark char on light bg ↔ light char on dark bg)
+  - op: invert
+    prob: 0.25
+
+  - op: gaussian_blur
+    sigma: [0.0, 2.0]
+    prob: 0.6
+  - op: gaussian_noise
+    std: [0, 25]
+  - op: motion_blur
+    kernel: [1, 7]
+    angle: [0, 180]
+    prob: 0.20
+  - op: jpeg
+    quality: [20, 98]
+    prob: 0.6      # v4: 100% → 60% — PIL/libjpeg CPU roundtrip 가 총 gen 시간 25% 차지. 실사진도 항상 JPEG 은 아님.
+
+  - op: defocus
+    radius: [0.0, 3.0]
+    prob: 0.3
+  - op: chromatic_aberration
+    shift: [-4, 4]
+    prob: 0.4
+  - op: lens_distort
+    k: [-0.10, 0.10]
+    prob: 0.5
+  - op: low_light
+    brightness: [0.35, 0.65]
+    noise_std: [5, 15]
+    prob: 0.2
+
+  # 종이/스캔 질감 (문서 스캔 / 책 표지 시뮬)
+  - op: paper_texture
+    strength: [0.05, 0.20]
+    prob: 0.15
+
+  # 이진화 (흑백 스캔 극단 케이스)
+  - op: binarize
+    threshold: [110, 160]
+    prob: 0.05
+
+  - op: elastic
+    alpha: [4, 8]
+    sigma: [5, 7]
+    prob: 0.3
+    skip_if_kinds: [svg_stroke, ehanja_median, kanjivg_median]

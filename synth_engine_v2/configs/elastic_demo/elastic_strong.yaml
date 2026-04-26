@@ -1,0 +1,16 @@
+# Elastic distortion 단독 — 강함 (극단적 왜곡, 라벨 안정성 한계 테스트용)
+base_source:
+  kind: svg_stroke
+  base_width: 48
+  stroke_ops: []
+
+style:
+  - layer: background.solid
+    color: [255, 255, 255]
+  - layer: fill.solid
+    color: [0, 0, 0]
+
+augment:
+  - op: elastic
+    alpha: [20, 30]
+    sigma: [5, 8]

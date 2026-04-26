@@ -1,0 +1,32 @@
+# v2 mini — tensor_shard 기반 파일럿 학습.
+# v1 mini (PNG 기반, 1k class × 5 epoch) 와 동일한 scope. IO 경로만 shard 로 전환.
+# 목적: v1 PIL path (3185 img/s steady) 대비 v2 shard path 가 얼마나 빠른지 측정.
+
+run_name: v3r_mini_1k
+
+data:
+  format: tensor_shard
+  shard_dir: d:/Library/01 Admissions/01 UIUC/4-2 SP26/ECE 479/lab3/synth_engine_v3/out/80_production_v3r_shard256
+  val_ratio: 0.1
+  # max_classes 는 tensor_shard 모드에서 작동 안 함 — class_index.json 이 shard 옆에 고정
+  # v3r production shard 의 class_index 는 이미 10,932 (sorted codepoint). 전부 포함.
+  # 1k class 로 좁히려면 별도 sub-shard 변환 필요.
+
+model:
+  name: resnet18
+  input_size: 128    # shard 는 256 이지만 GPU 가 128 로 resize (make_gpu_transform 에서 자동)
+
+train:
+  batch_size: 256
+  num_workers: 8
+  epochs: 5
+  lr: 0.2
+  momentum: 0.9
+  weight_decay: 5.0e-4
+  label_smoothing: 0.1
+  amp: true
+
+eval:
+  every_epoch: 1
+
+out_dir: d:/Library/01 Admissions/01 UIUC/4-2 SP26/ECE 479/lab3/train_engine_v2/out/02_v3r_mini

@@ -1,0 +1,10 @@
+# 거의 왜곡 없음. 아주 약한 카메라 조건 시뮬.
+augment:
+  - op: rotate
+    angle: [-2, 2]
+  - op: gaussian_blur
+    sigma: [0.0, 0.5]
+  - op: gaussian_noise
+    std: [0, 4]
+  - op: jpeg
+    quality: [80, 98]

@@ -1,0 +1,27 @@
+# e-hanja outline-based stroke source smoke config.
+# Same 글자 seed 마다 stroke-level variation — 필체처럼 매번 다른 모양.
+# 강도는 "라벨 안전 + 학습 효과 있는" 중도로 설정. width_jitter 는 dilate 편향
+# 으로 얇은 획 소실 방지.
+
+base_source:
+  kind: ehanja_stroke
+  stroke_ops:
+    - op: control_jitter
+      std: 1.8
+    - op: stroke_translate
+      std: 1.5
+    - op: stroke_rotate
+      angle_std: 1.5
+    - op: width_jitter
+      radius_std: 0.7
+      mean: 0.3                # 살짝 두꺼워지는 쪽 편향
+      min_radius: -1           # erode 는 최대 1 px (5×5 MinFilter 금지)
+      max_radius: 2
+
+style:
+  - layer: background.solid
+    color: [255, 255, 255]
+  - layer: fill.solid
+    color: [0, 0, 0]
+
+augment: []

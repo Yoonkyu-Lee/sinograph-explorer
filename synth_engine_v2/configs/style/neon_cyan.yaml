@@ -1,0 +1,16 @@
+# 어두운 배경 + 청록 네온 글로우 + 흰 코어.
+# v1의 `neon_cyan`에 해당하지만 색/반경 파라미터가 범위로 열려 있음.
+base_source:
+  kind: font
+  filter: all
+
+style:
+  - layer: background.solid
+    color: [10, 10, 25]
+
+  - layer: glow.neon
+    color: [0, 220, 255]
+    outer_dilate: [2, 4]
+    outer_blur: [8, 14]
+    inner_blur: [2, 4]
+    core_color: [255, 255, 255]

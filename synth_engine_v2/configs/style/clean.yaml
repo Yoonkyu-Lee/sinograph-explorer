@@ -1,0 +1,10 @@
+# 흰 바탕 위 검정 글자. v1의 `clean`에 해당.
+base_source:
+  kind: font
+  filter: all
+
+style:
+  - layer: background.solid
+    color: [255, 255, 255]
+  - layer: fill.solid
+    color: [0, 0, 0]

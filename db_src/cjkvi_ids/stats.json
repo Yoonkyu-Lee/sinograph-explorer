@@ -1,0 +1,23 @@
+{
+  "source": "cjkvi-ids",
+  "source_files": [
+    "ids.txt",
+    "ids-ext-cdef.txt"
+  ],
+  "total_entries": 88937,
+  "unique_codepoints": 88937,
+  "multi_alternate_entries": 3502,
+  "by_block": {
+    "CJK_Ext_B": 42711,
+    "CJK_Unified": 20976,
+    "CJK_Ext_F": 7473,
+    "CJK_Ext_A": 6582,
+    "CJK_Ext_E": 5762,
+    "CJK_Ext_C": 4149,
+    "CJK_Compat_Supp": 542,
+    "CJK_Compat": 472,
+    "CJK_Ext_D": 222,
+    "Other": 40,
+    "CJK_Radicals_Supp": 8
+  }
+}

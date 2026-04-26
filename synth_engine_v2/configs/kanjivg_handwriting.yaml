@@ -1,0 +1,29 @@
+# KanjiVG centerline medians (Japanese kanji, 6,703자).
+# 日本 shinjitai 고유 자형 포함 — MMH/e-hanja 미커버 영역 보강.
+
+base_source:
+  kind: kanjivg_median
+  # KanjiVG stroke-width=3 on viewbox=109 → 2.75% 비율.
+  # MMH (48/1024 = 4.7%) 매칭하려면 width_scale ≈ 1.7.
+  width_scale: 1.7
+  # box=109 기준이라 MMH(box=1024)의 jitter std 를 약 1/10 로 스케일:
+  # MMH: width 5, control 3, endpoint 5, translate 2.5
+  stroke_ops:
+    - op: width_jitter
+      std: 0.5
+    - op: control_jitter
+      std: 0.3
+    - op: endpoint_jitter
+      std: 0.5
+    - op: stroke_rotate
+      angle_std: 2
+    - op: stroke_translate
+      std: 0.25
+
+style:
+  - layer: background.solid
+    color: [255, 255, 255]
+  - layer: fill.solid
+    color: [0, 0, 0]
+
+augment: []

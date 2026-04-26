@@ -1,0 +1,17 @@
+# Elastic distortion 단독 — 약함 (자연스러운 손글씨 느낌)
+# 다른 variation 소스 전부 비활성: stroke_ops 비우고, style 최소, augment는 elastic만.
+base_source:
+  kind: svg_stroke
+  base_width: 48
+  stroke_ops: []            # 획 단위 변주 끔
+
+style:
+  - layer: background.solid
+    color: [255, 255, 255]
+  - layer: fill.solid
+    color: [0, 0, 0]
+
+augment:
+  - op: elastic
+    alpha: [4, 8]
+    sigma: [5, 7]

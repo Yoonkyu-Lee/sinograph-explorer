@@ -1,0 +1,31 @@
+# e-hanja median 필체 — 길이 비례 jitter (ratio 기반).
+# 점(丶) 은 덜 흔들리고 긴 획은 충분히 흔들리도록 각 획 길이에 비례해 std 계산.
+
+base_source:
+  kind: ehanja_median
+  width_scale: 1.5
+  stroke_ops:
+    - op: width_jitter
+      std: 5
+    - op: control_jitter
+      std_ratio: 0.020            # 획 길이의 2%
+      std_min: 0.8
+      std_max: 10.0
+    - op: endpoint_jitter
+      std_ratio: 0.030            # 획 길이의 3%
+      std_min: 1.5
+      std_max: 15.0
+    - op: stroke_rotate
+      angle_std: 2
+    - op: stroke_translate
+      std_ratio: 0.015            # 획 길이의 1.5%
+      std_min: 0.5
+      std_max: 8.0
+
+style:
+  - layer: background.solid
+    color: [255, 255, 255]
+  - layer: fill.solid
+    color: [0, 0, 0]
+
+augment: []
