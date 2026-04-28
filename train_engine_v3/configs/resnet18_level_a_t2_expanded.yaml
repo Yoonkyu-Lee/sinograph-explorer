@@ -1,0 +1,41 @@
+# T2 expanded — 학습 곡선 첫 검증.
+#   100 shards × 5 epochs × bs=640. ~12 min on RTX 4080 Laptop.
+#
+# 합격 기준:
+#   - train avg_loss epoch 별로 단조 감소
+#   - epoch 5 train avg_loss < 4.0 (random 11.5 대비 의미있는 분류 시작)
+#   - sysmon: GPU util > 90% 평균, hitch 없음
+#
+# 알아둘 것: char/top1 val = 0% 일 가능성 — shard codepoint-sort 의 disjoint
+# train/val 문제. 본격 학습 (T3) 진입 전 val_per_shard 방식으로 수정 필요.
+
+run_name: level_a_t2_expanded
+
+data:
+  format: tensor_shard
+  shard_dir: synth_engine_v3/out/94_production_102k_x200
+  aux_labels: synth_engine_v3/out/94_production_102k_x200/aux_labels.npz
+  max_shards: 100
+  val_ratio: 0.05                # 5 val + 95 train shards
+
+model:
+  name: resnet18
+  input_size: 128
+
+train:
+  batch_size: 640                # TG-1 best
+  num_workers: 4
+  epochs: 5
+  lr: 0.1
+  momentum: 0.9
+  weight_decay: 5.0e-4
+  label_smoothing: 0.1
+  amp: true
+  amp_dtype: fp16
+  cudnn_benchmark: true
+  channels_last: false
+  compile: off
+
+loss_weights: { char: 1.0, radical: 0.2, total: 0.1, residual: 0.1, idc: 0.2 }
+eval: { every_epoch: 1 }
+out_dir: train_engine_v3/out/11_t2_expanded

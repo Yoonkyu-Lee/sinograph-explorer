@@ -1,0 +1,55 @@
+# T5-light — production 첫 학습.
+#   전체 3927 shards × 5 epoch. RTX 4080 Laptop @ ~3,800 img/s = ~7시간.
+#
+# 사양:
+#   - corpus: 94_production_102k_x200 (98,169 class, 19.6M samples)
+#   - 학습 sample/epoch: 4900 × 3927 = 19,242,300 (val_per_shard=100 기준 train)
+#   - val sample: 100 × 3927 = 392,700 (~2% of corpus, full char distribution)
+#   - bs=640, lr=0.4 (linear scale from v2 base 0.1@bs=128 → 0.5@bs=640, conservative 0.4)
+#   - cosine schedule with 1 epoch warmup
+#   - ckpt: last.pt + best.pt (by char/top1)
+#   - resume: 자동 (last.pt 있으면 이어감)
+#
+# 합격 기준 (epoch 5 종료 시):
+#   - train avg_loss < 5.0 (T3-mini 100shards 가 epoch 5 에 2.86 → 전 corpus 의 chars 가
+#     더 많아 char 당 sample 적어 더 어려움. 5 정도가 reasonable)
+#   - val char/top1 > 5% (98k 분포 random 0.001%)
+#   - val radical/top1 > 30%
+#   - val idc/top1 > 80%
+#   - 학습 도중 어떤 metric 도 발산 / NaN 없음
+
+run_name: level_a_t5_light
+
+data:
+  format: tensor_shard
+  shard_dir: synth_engine_v3/out/94_production_102k_x200
+  aux_labels: synth_engine_v3/out/94_production_102k_x200/aux_labels.npz
+  max_shards: 0                  # 0 = 전체 사용 (3927)
+  val_per_shard: 100
+
+model:
+  name: resnet18
+  input_size: 128
+
+train:
+  batch_size: 640
+  num_workers: 4
+  epochs: 5
+  lr: 0.4
+  momentum: 0.9
+  weight_decay: 5.0e-4
+  label_smoothing: 0.1
+  amp: true
+  amp_dtype: fp16
+  cudnn_benchmark: true
+  channels_last: false
+  compile: off
+  scheduler: cosine
+  warmup_epochs: 1
+  ckpt_save: true
+  ckpt_best_by: char/top1
+  resume: true
+
+loss_weights: { char: 1.0, radical: 0.2, total: 0.1, residual: 0.1, idc: 0.2 }
+eval: { every_epoch: 1 }
+out_dir: train_engine_v3/out/14_t5_light

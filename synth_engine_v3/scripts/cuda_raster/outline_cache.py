@@ -263,7 +263,12 @@ def _get_outline_cached(font_path_str: str, face_index: int, char_code: int,
         arr[:, 2] = arr[:, 2] - cbox_xmin + target_x_min
         arr[:, 1] = cbox_ymax - arr[:, 1] + target_y_min
         arr[:, 3] = cbox_ymax - arr[:, 3] + target_y_min
-        edges = arr
+        # Lab 8 prep: sort edges by y_min (= min(y0, y1)) so the v2 GPU
+        # kernel can early-exit when the current chunk's leading edge
+        # passes the tile bound. Stable sort keeps original within-y order.
+        y_min = np.minimum(arr[:, 1], arr[:, 3])
+        order = np.argsort(y_min, kind="stable")
+        edges = np.ascontiguousarray(arr[order])
         bbox = (
             float(target_x_min),
             float(target_y_min),

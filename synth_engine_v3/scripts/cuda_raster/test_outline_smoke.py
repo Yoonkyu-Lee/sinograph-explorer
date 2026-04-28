@@ -130,14 +130,23 @@ def iou(a: np.ndarray, b: np.ndarray) -> float:
     return float(inter) / float(max(union, 1))
 
 
+def _win_fonts() -> Path:
+    if sys.platform.startswith("win"):
+        return Path("C:/Windows/Fonts")
+    if Path("/mnt/c/Windows/Fonts").is_dir():
+        return Path("/mnt/c/Windows/Fonts")
+    return Path("/usr/share/fonts/truetype")
+
+
 def main() -> None:
+    fdir = _win_fonts()
     cases = [
-        (Path("C:/Windows/Fonts/batang.ttc"), 0, "鑑"),
-        (Path("C:/Windows/Fonts/batang.ttc"), 0, "金"),
-        (Path("C:/Windows/Fonts/batang.ttc"), 0, "媤"),
-        (Path("C:/Windows/Fonts/batang.ttc"), 0, "一"),
-        (Path("C:/Windows/Fonts/malgun.ttf"), 0, "鑑"),
-        (Path("C:/Windows/Fonts/simsun.ttc"), 0, "金"),
+        (fdir / "batang.ttc", 0, "鑑"),
+        (fdir / "batang.ttc", 0, "金"),
+        (fdir / "batang.ttc", 0, "媤"),
+        (fdir / "batang.ttc", 0, "一"),
+        (fdir / "malgun.ttf", 0, "鑑"),
+        (fdir / "simsun.ttc", 0, "金"),
     ]
 
     out_dir = Path(__file__).parent / "out_outline_smoke"

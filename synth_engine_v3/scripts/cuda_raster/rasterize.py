@@ -33,41 +33,61 @@ def _ensure_ninja_on_path() -> None:
         os.environ["PATH"] = str(scripts_dir) + os.pathsep + p
 
 
-_ext = None
+# Lazily-built per-version extensions: "v1" (naive Lab-1) and "v2"
+# (shared-mem Lab-4 + sorted-edges Lab-8 + scan Lab-7).
+_ext_cache: dict = {}
 
 
-def _load_ext():
-    global _ext
-    if _ext is None:
-        _ensure_ninja_on_path()
-        _ext = load(
-            name="cuda_raster_ext",
-            sources=[str(_HERE / "raster_kernel.cu")],
-            verbose=True,
-            extra_cflags=["/O2", "-D__NV_NO_HOST_COMPILER_CHECK=1"],
-            extra_cuda_cflags=[
-                "-O3", "--use_fast_math",
-                "--allow-unsupported-compiler",
-                "-Xcompiler", "/D__NV_NO_HOST_COMPILER_CHECK=1",
-            ],
-        )
-    return _ext
+def _load_ext(kernel: str = "v1"):
+    if kernel in _ext_cache:
+        return _ext_cache[kernel]
+    _ensure_ninja_on_path()
+    is_win = sys.platform.startswith("win")
+    cflags = ["/O2"] if is_win else ["-O3"]
+    cuda_flags = ["-O3", "--use_fast_math"]
+    if is_win:
+        cuda_flags += [
+            "--allow-unsupported-compiler",
+            "-Xcompiler", "/D__NV_NO_HOST_COMPILER_CHECK=1",
+        ]
+    if kernel == "v1":
+        sources = [str(_HERE / "raster_kernel.cu")]
+        name = "cuda_raster_ext_v1"
+    elif kernel == "v2":
+        sources = [str(_HERE / "raster_kernel_v2.cu")]
+        name = "cuda_raster_ext_v2"
+    else:
+        raise ValueError(f"unknown kernel: {kernel!r}")
+    ext = load(
+        name=name,
+        sources=sources,
+        verbose=True,
+        extra_cflags=cflags,
+        extra_cuda_cflags=cuda_flags,
+    )
+    _ext_cache[kernel] = ext
+    return ext
 
 
 def rasterize_batch(outlines, H: int, W: int,
-                     device: str | torch.device = "cuda") -> torch.Tensor:
+                     device: str | torch.device = "cuda",
+                     kernel: str = "v2") -> torch.Tensor:
     """Rasterize a list of glyph outlines into a (B, 1, H, W) float mask.
 
+    `kernel` selects the CUDA implementation:
+        "v1" — Lab-1 naive (per-pixel-per-edge global memory loop)
+        "v2" — Lab 4 shared memory + Lab 8 sorted-edge coalesced load +
+               Lab 7 active-edge tile pruning. Default.
+
     Each outline is expected to expose an `.edges` ndarray of shape (M, 4)
-    in pixel coords (top-left origin, y-down). None / missing entries become
-    all-zero glyphs.
+    sorted by y_min if kernel == "v2" (outline_cache emits y-sorted by
+    default). None / missing entries become all-zero glyphs.
     """
-    ext = _load_ext()
+    ext = _load_ext(kernel=kernel)
     B = len(outlines)
     if B == 0:
         return torch.zeros((0, 1, H, W), dtype=torch.float32, device=device)
 
-    # Build packed edges + per-glyph offsets
     edges_list = []
     offsets = [0]
     for od in outlines:
@@ -84,4 +104,5 @@ def rasterize_batch(outlines, H: int, W: int,
     edges_t = torch.from_numpy(all_edges).to(device, non_blocking=True).contiguous()
     offsets_t = torch.tensor(offsets, dtype=torch.int32, device=device)
 
-    return ext.raster_forward(edges_t, offsets_t, int(H), int(W))
+    fn = ext.raster_forward_v2 if kernel == "v2" else ext.raster_forward
+    return fn(edges_t, offsets_t, int(H), int(W))

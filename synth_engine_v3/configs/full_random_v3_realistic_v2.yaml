@@ -122,7 +122,12 @@ augment:
       strength: [0.04, 0.2]
       prob: 0.5
 
-    # photometric
+    # photometric — unfused per-op chain.
+    # NOTE: OPT-3 fusion attempt (photometric_fused CUDA kernel) was tested
+    # and found to be a NET LOSS (-13 %). The unfused version benefits from
+    # per-op probabilistic sub-batch slicing (each op runs on ~30-60 % of
+    # samples), which beats the fused kernel that has to process every
+    # sample for all four ops. See doc/20 §13.
     - op: brightness
       factor: [0.9, 1.4]
       prob: 0.6
@@ -135,7 +140,6 @@ augment:
     # blur / noise — 2차 축소 (2026-04-23, 128 training 고려).
     # 128 decode 기준 effective blur: σ 0.8 at 384 → σ 0.27 at 128, kernel 3
     # at 384 → 1 at 128. 획 1-2 px wide 인 고획수 글자에서도 merge 최소화.
-    # 동시 발생 확률 0.3 × 0.08 × 0.12 ≈ 0.3 % (이전 0.96 % 대비 1/3).
     - op: gaussian_blur
       sigma: [0.0, 0.8]
       prob: 0.3

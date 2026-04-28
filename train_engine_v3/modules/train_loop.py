@@ -17,6 +17,8 @@ Logged metrics (every `log_every` steps):
 from __future__ import annotations
 
 import time
+from collections import deque
+from contextlib import contextmanager
 from dataclasses import dataclass
 
 import torch
@@ -24,6 +26,28 @@ import torch.nn.functional as F
 
 from .aux_labels import AuxTable
 from .sysmon import format_snapshot
+
+
+@contextmanager
+def _nvtx(name: str):
+    """NVTX range context manager. No-op if torch.cuda.nvtx unavailable.
+
+    Wrap each pipeline stage so Nsight Systems shows a clear stage breakdown.
+    Per doc/22 TG-0: NVTX is the highest-ROI educational tool from ECE 408
+    lab content — it lets us pinpoint the real bottleneck (likely dataloader
+    or 98k softmax, not conv) instead of guessing.
+    """
+    try:
+        torch.cuda.nvtx.range_push(name)
+    except Exception:
+        pass
+    try:
+        yield
+    finally:
+        try:
+            torch.cuda.nvtx.range_pop()
+        except Exception:
+            pass
 
 
 # Loss weights (doc/19 §3). Single source of truth — override via config at
@@ -99,7 +123,23 @@ def train_one_epoch(
     log_every: int = 50,
     sysmon=None,
     gpu_transform=None,
+    window_steps: int = 50,
+    amp_dtype: torch.dtype = torch.float16,
+    channels_last: bool = False,
+    scheduler=None,
 ):
+    """Single-epoch train loop with NVTX-instrumented stages.
+
+    Reports two rates side-by-side per log line:
+      - `cum`:  cumulative rate from epoch start (includes warmup, cuDNN
+                benchmark, allocator setup → biased low at start)
+      - `win`:  rolling-window rate over last `window_steps` steps (steady
+                state once warmed up)
+
+    Steady-state orientation per doc/22 §3 — `cum` includes warmup which is
+    misleading; `win` is what the user should compare across optimization
+    phases.
+    """
     model.train()
     if sysmon is not None:
         sysmon.reset_peaks()
@@ -109,46 +149,76 @@ def train_one_epoch(
     t0 = time.time()
     use_amp = scaler is not None
 
-    for i, (x, y) in enumerate(loader):
-        x = x.to(device, non_blocking=True)
-        y = y.to(device, non_blocking=True)
-        if gpu_transform is not None:
-            x = gpu_transform(x)
-        aux = aux_table.get_aux(y)
+    # rolling window for steady-state rate: deque of (t_step_end, n_in_step)
+    win_buf: deque = deque(maxlen=window_steps)
+    t_prev = t0
 
-        optimizer.zero_grad(set_to_none=True)
-        with torch.amp.autocast("cuda", enabled=use_amp):
-            logits = model(x)
-            loss, parts = compute_multitask_loss(logits, y, aux, weights)
-        if scaler is not None:
-            scaler.scale(loss).backward()
-            scaler.step(optimizer)
-            scaler.update()
-        else:
-            loss.backward()
-            optimizer.step()
+    with _nvtx("train_epoch"):
+        for i, (x, y) in enumerate(loader):
+            with _nvtx("h2d"):
+                x = x.to(device, non_blocking=True)
+                y = y.to(device, non_blocking=True)
+            with _nvtx("gpu_transform"):
+                if gpu_transform is not None:
+                    x = gpu_transform(x)
+                if channels_last:
+                    x = x.contiguous(memory_format=torch.channels_last)
+            with _nvtx("aux_gather"):
+                aux = aux_table.get_aux(y)
 
-        bs = x.size(0)
-        sum_loss += parts["loss"] * bs
-        sum_n += bs
+            optimizer.zero_grad(set_to_none=True)
+            with _nvtx("forward"):
+                with torch.amp.autocast("cuda", enabled=use_amp, dtype=amp_dtype):
+                    logits = model(x)
+            with _nvtx("loss"):
+                with torch.amp.autocast("cuda", enabled=use_amp, dtype=amp_dtype):
+                    loss, parts = compute_multitask_loss(logits, y, aux, weights)
+            with _nvtx("backward"):
+                if scaler is not None:
+                    scaler.scale(loss).backward()
+                else:
+                    loss.backward()
+            with _nvtx("optim"):
+                if scaler is not None:
+                    scaler.step(optimizer)
+                    scaler.update()
+                else:
+                    optimizer.step()
+            if scheduler is not None:
+                scheduler.step()
 
-        if (i + 1) % log_every == 0:
-            elapsed = time.time() - t0
-            rate = sum_n / max(elapsed, 1e-6)
-            steps_left = max(len(loader) - (i + 1), 0)
-            eta = steps_left * (elapsed / max(i + 1, 1))
-            ts = time.strftime("%H:%M:%S")
-            msg = (
-                f"[{ts}] step {i+1}/{len(loader)}  "
-                f"loss={sum_loss/sum_n:.4f}  "
-                f"char={parts['l_char']:.3f} rad={parts['l_radical']:.3f} "
-                f"tot={parts['l_total']:.3f} res={parts['l_residual']:.3f} "
-                f"idc={parts['l_idc']:.3f}  "
-                f"({rate:.1f} img/s, t={elapsed:.0f}s, eta={eta:.0f}s)"
-            )
-            if sysmon is not None:
-                msg += "  " + format_snapshot(sysmon.snapshot())
-            print(msg, flush=True)
+            bs = x.size(0)
+            sum_loss += parts["loss"] * bs
+            sum_n += bs
+
+            t_now = time.time()
+            win_buf.append((t_now - t_prev, bs))
+            t_prev = t_now
+
+            if (i + 1) % log_every == 0:
+                elapsed = t_now - t0
+                cum_rate = sum_n / max(elapsed, 1e-6)
+                # rolling-window steady-state rate
+                win_t = sum(dt for dt, _ in win_buf)
+                win_n = sum(n for _, n in win_buf)
+                win_rate = win_n / max(win_t, 1e-6)
+                steps_left = max(len(loader) - (i + 1), 0)
+                eta = steps_left * (elapsed / max(i + 1, 1))
+                ts = time.strftime("%H:%M:%S")
+                lr = optimizer.param_groups[0]["lr"]
+                msg = (
+                    f"[{ts}] step {i+1}/{len(loader)}  "
+                    f"loss={sum_loss/sum_n:.4f}  "
+                    f"char={parts['l_char']:.3f} rad={parts['l_radical']:.3f} "
+                    f"tot={parts['l_total']:.3f} res={parts['l_residual']:.3f} "
+                    f"idc={parts['l_idc']:.3f}  "
+                    f"lr={lr:.4g}  "
+                    f"(cum={cum_rate:.0f} win={win_rate:.0f} img/s, "
+                    f"t={elapsed:.0f}s, eta={eta:.0f}s)"
+                )
+                if sysmon is not None:
+                    msg += "  " + format_snapshot(sysmon.snapshot())
+                print(msg, flush=True)
     return sum_loss / max(sum_n, 1)
 
 
@@ -158,6 +228,9 @@ def evaluate(
     aux_table: AuxTable,
     topk: tuple = (1, 5),
     gpu_transform=None,
+    amp_dtype: torch.dtype = torch.float16,
+    channels_last: bool = False,
+    use_amp: bool = True,
 ):
     model.eval()
     n = 0
@@ -172,47 +245,53 @@ def evaluate(
     resid_mae_n = 0
     k_max = max(topk)
 
-    for x, y in loader:
-        x = x.to(device, non_blocking=True)
-        y = y.to(device, non_blocking=True)
-        if gpu_transform is not None:
-            x = gpu_transform(x)
-        aux = aux_table.get_aux(y)
-        logits = model(x)
+    with _nvtx("evaluate"):
+        for x, y in loader:
+            with _nvtx("eval_h2d"):
+                x = x.to(device, non_blocking=True)
+                y = y.to(device, non_blocking=True)
+                if gpu_transform is not None:
+                    x = gpu_transform(x)
+                if channels_last:
+                    x = x.contiguous(memory_format=torch.channels_last)
+                aux = aux_table.get_aux(y)
+            with _nvtx("eval_forward"):
+                with torch.amp.autocast("cuda", enabled=use_amp, dtype=amp_dtype):
+                    logits = model(x)
 
-        # char top-k
-        _, pred = logits["char"].topk(k_max, dim=1)
-        match = pred == y.unsqueeze(1)
-        for k in topk:
-            char_correct[k] += match[:, :k].any(dim=1).sum().item()
+            # char top-k
+            _, pred = logits["char"].topk(k_max, dim=1)
+            match = pred == y.unsqueeze(1)
+            for k in topk:
+                char_correct[k] += match[:, :k].any(dim=1).sum().item()
 
-        # radical top-1 (masked)
-        rad_mask = aux.valid[:, 0]
-        if rad_mask.any():
-            rad_pred = logits["radical"].argmax(dim=1)
-            rad_correct += ((rad_pred == aux.radical) & rad_mask).sum().item()
-            rad_valid_n += rad_mask.sum().item()
+            # radical top-1 (masked)
+            rad_mask = aux.valid[:, 0]
+            if rad_mask.any():
+                rad_pred = logits["radical"].argmax(dim=1)
+                rad_correct += ((rad_pred == aux.radical) & rad_mask).sum().item()
+                rad_valid_n += rad_mask.sum().item()
 
-        # idc top-1 (masked)
-        idc_mask = aux.valid[:, 3]
-        if idc_mask.any():
-            idc_pred = logits["ids_top_idc"].argmax(dim=1)
-            idc_correct += ((idc_pred == aux.idc) & idc_mask).sum().item()
-            idc_valid_n += idc_mask.sum().item()
+            # idc top-1 (masked)
+            idc_mask = aux.valid[:, 3]
+            if idc_mask.any():
+                idc_pred = logits["ids_top_idc"].argmax(dim=1)
+                idc_correct += ((idc_pred == aux.idc) & idc_mask).sum().item()
+                idc_valid_n += idc_mask.sum().item()
 
-        # stroke MAE (masked)
-        t_mask = aux.valid[:, 1]
-        if t_mask.any():
-            diff = (logits["total_strokes"] - aux.total).abs()
-            total_mae_sum += (diff * t_mask.float()).sum().item()
-            total_mae_n += t_mask.sum().item()
-        r_mask = aux.valid[:, 2]
-        if r_mask.any():
-            diff = (logits["residual_strokes"] - aux.residual).abs()
-            resid_mae_sum += (diff * r_mask.float()).sum().item()
-            resid_mae_n += r_mask.sum().item()
+            # stroke MAE (masked)
+            t_mask = aux.valid[:, 1]
+            if t_mask.any():
+                diff = (logits["total_strokes"] - aux.total).abs()
+                total_mae_sum += (diff * t_mask.float()).sum().item()
+                total_mae_n += t_mask.sum().item()
+            r_mask = aux.valid[:, 2]
+            if r_mask.any():
+                diff = (logits["residual_strokes"] - aux.residual).abs()
+                resid_mae_sum += (diff * r_mask.float()).sum().item()
+                resid_mae_n += r_mask.sum().item()
 
-        n += y.size(0)
+            n += y.size(0)
 
     out = {f"char/top{k}": char_correct[k] / max(n, 1) for k in topk}
     out["radical/top1"] = rad_correct / max(rad_valid_n, 1)

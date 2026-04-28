@@ -1,0 +1,32 @@
+# TG-1 torch.compile (baseline=off). reduce-overhead mode = CUDA graph + fusion.
+# Epoch 1 includes compile warmup (~1-3 min). Epoch 2 = steady measurement.
+run_name: level_a_tg1_compile
+
+data:
+  format: tensor_shard
+  shard_dir: synth_engine_v3/out/94_production_102k_x200
+  aux_labels: synth_engine_v3/out/94_production_102k_x200/aux_labels.npz
+  max_shards: 32
+  val_ratio: 0.0625
+
+model:
+  name: resnet18
+  input_size: 128
+
+train:
+  batch_size: 256
+  num_workers: 4
+  epochs: 2
+  lr: 0.1
+  momentum: 0.9
+  weight_decay: 5.0e-4
+  label_smoothing: 0.1
+  amp: true
+  amp_dtype: fp16
+  cudnn_benchmark: false
+  channels_last: false
+  compile: reduce-overhead       # ★ TG-1 변경 단일 변수
+
+loss_weights: { char: 1.0, radical: 0.2, total: 0.1, residual: 0.1, idc: 0.2 }
+eval: { every_epoch: 1 }
+out_dir: train_engine_v3/out/08_tg1_compile

@@ -70,25 +70,33 @@ class TensorShardDataset(IterableDataset):
         seed: int = 0,
         shuffle_buffer: int = 2048,
         skip_last_partial: bool = False,
+        start_idx: int = 0,
+        end_idx: int | None = None,
     ):
+        """start_idx / end_idx slice each shard's sample list AFTER a stable
+        per-shard permutation. Used for STRATIFIED train/val split:
+
+            val   = TensorShardDataset(..., start_idx=0,             end_idx=K)
+            train = TensorShardDataset(..., start_idx=K,             end_idx=None)
+
+        Both datasets share the same shards but disjoint sample slices, so
+        char distribution is identical between train and val. Compare with
+        `build_shard_train_val_split` (per-shard split) — that produces
+        char-disjoint splits which break char/top1 measurement.
+        """
         super().__init__()
         self.shard_paths = list(shard_paths)
         self.shuffle = shuffle
         self.seed = seed
         self.shuffle_buffer = max(0, int(shuffle_buffer))
         self.skip_last_partial = skip_last_partial
+        self.start_idx = int(start_idx)
+        self.end_idx = end_idx if end_idx is None else int(end_idx)
         self._epoch = 0
         self._cached_len = None
 
     def __len__(self):
-        """Approximate total sample count across all shards.
-
-        Loads the first shard once to get per-shard size, multiplies by shard
-        count. Relies on the generator writing uniform-size shards (it does —
-        only the last shard may be smaller, negligible error at 5450+ shards).
-        Required because PyTorch DataLoader.__len__ (and our train_one_epoch
-        ETA calc) calls dataset.__len__ for IterableDatasets too.
-        """
+        """Approximate total sample count across all shards (after slicing)."""
         if self._cached_len is not None:
             return self._cached_len
         if not self.shard_paths:
@@ -97,7 +105,9 @@ class TensorShardDataset(IterableDataset):
         first = np.load(self.shard_paths[0])
         per_shard = int(first["labels"].shape[0])
         first.close()
-        self._cached_len = per_shard * len(self.shard_paths)
+        e = self.end_idx if self.end_idx is not None else per_shard
+        my_per_shard = max(0, min(e, per_shard) - self.start_idx)
+        self._cached_len = my_per_shard * len(self.shard_paths)
         return self._cached_len
 
     def set_epoch(self, epoch: int) -> None:
@@ -118,12 +128,20 @@ class TensorShardDataset(IterableDataset):
         images = data["images"]   # (N, H, W, 3) uint8
         labels = data["labels"]   # (N,) int64
         n = len(images)
-        order = list(range(n))
+        # Stable per-shard permutation: identical for train/val datasets
+        # (so slicing produces disjoint sample sets within each shard).
+        # Seed = stable hash of shard filename + global stratify_seed.
+        strat_seed = (hash(shard_path.name) ^ self.seed) & 0xFFFFFFFF
+        permutation = list(range(n))
+        random.Random(strat_seed).shuffle(permutation)
+        # Apply slice — each dataset takes its own portion of the permuted list
+        e = self.end_idx if self.end_idx is not None else n
+        my_indices = permutation[self.start_idx:min(e, n)]
+        # Per-epoch shuffle (train only — val keeps deterministic order)
         if self.shuffle:
-            rng.shuffle(order)
-        for idx in order:
+            rng.shuffle(my_indices)
+        for idx in my_indices:
             img = images[idx]       # (H, W, 3) uint8
-            # Convert to (3, H, W) tensor, still uint8 — GPU side does float/normalize
             img_t = torch.from_numpy(np.ascontiguousarray(img.transpose(2, 0, 1)))
             label = int(labels[idx])
             yield img_t, label
@@ -171,6 +189,12 @@ def build_shard_train_val_split(
 ) -> tuple[list[Path], list[Path]]:
     """Split shard list into train/val by shard (not by sample).
 
+    ⚠️ For codepoint-sorted shards (synth_engine_v3 default), this produces
+    char-disjoint train/val sets. char/top1 will be ~0% because the model
+    never trains on val chars. Use `build_stratified_val_split` instead for
+    measurable char accuracy. Kept here for legacy / when shard contents are
+    already char-uniform.
+
     Simpler and faster than per-sample split: train val boundary is shard-level,
     so one shard's worth of samples (all 1k-5k) goes to one side. Uniform
     random with fixed seed → reproducible. Small val_ratio bias (±1 shard
@@ -182,4 +206,34 @@ def build_shard_train_val_split(
     n_val = max(1, int(round(len(paths) * val_ratio)))
     val = paths[:n_val]
     train = paths[n_val:]
+    return train, val
+
+
+def build_stratified_val_split(
+    shard_paths: list[Path],
+    val_per_shard: int,
+    seed: int = 0,
+    shuffle_buffer: int = 1024,
+) -> tuple["TensorShardDataset", "TensorShardDataset"]:
+    """Stratified train/val: same shards, disjoint within-shard slices.
+
+    Both datasets share the SAME shard list (so train and val see the same
+    char distribution), but slice the per-shard permuted index list so val
+    gets the first `val_per_shard` samples per shard and train gets the rest.
+
+    Returns (train_dataset, val_dataset). Use directly with DataLoader.
+
+    Example: with 100 shards × 5000 samples, val_per_shard=100 →
+        val   has 100 × 100 = 10,000 samples (~2 % of corpus, full char range)
+        train has 4900 × 100 = 490,000 samples (98 % of corpus, full char range)
+    """
+    paths = list(shard_paths)
+    train = TensorShardDataset(
+        paths, shuffle=True, seed=seed, shuffle_buffer=shuffle_buffer,
+        start_idx=val_per_shard, end_idx=None,
+    )
+    val = TensorShardDataset(
+        paths, shuffle=False, seed=seed, shuffle_buffer=0,
+        start_idx=0, end_idx=val_per_shard,
+    )
     return train, val

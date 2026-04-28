@@ -1,0 +1,34 @@
+# TG-1 combined with channels_last — interaction test.
+# Hypothesis: channels_last alone regressed at bs=256, but with cudnn.benchmark
+# enabled and larger batch (bs=640), cuDNN might pick the NHWC fast kernel.
+# This config tests that interaction.
+run_name: level_a_tg1_combined_chlast
+
+data:
+  format: tensor_shard
+  shard_dir: synth_engine_v3/out/94_production_102k_x200
+  aux_labels: synth_engine_v3/out/94_production_102k_x200/aux_labels.npz
+  max_shards: 32
+  val_ratio: 0.0625
+
+model:
+  name: resnet18
+  input_size: 128
+
+train:
+  batch_size: 640
+  num_workers: 4
+  epochs: 2
+  lr: 0.1
+  momentum: 0.9
+  weight_decay: 5.0e-4
+  label_smoothing: 0.1
+  amp: true
+  amp_dtype: fp16
+  cudnn_benchmark: true
+  channels_last: true
+  compile: off
+
+loss_weights: { char: 1.0, radical: 0.2, total: 0.1, residual: 0.1, idc: 0.2 }
+eval: { every_epoch: 1 }
+out_dir: train_engine_v3/out/10_tg1_combined_chlast

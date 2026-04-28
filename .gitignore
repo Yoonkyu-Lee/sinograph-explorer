@@ -165,15 +165,19 @@ train_engine_v3/out/
 *.safetensors
 
 # =============================================================
-# deploy_pi — 배포용 모델 (ONNX / TFLite / saved_model, release 따로 관리)
-# class_index.json 만 명시적으로 유지 (inference label map)
+# deploy_pi — 배포용 모델 (ONNX / TFLite / Keras / saved_model)
+# release 따로 관리. class_index.json + edgetpu_compile log 만 명시적 유지
 # =============================================================
 deploy_pi/export/*.onnx
 deploy_pi/export/**/*.tflite
 deploy_pi/export/**/*.tflite.*
+deploy_pi/export/**/*.keras
 deploy_pi/export/**/saved_model.pb
 deploy_pi/export/**/fingerprint.pb
 deploy_pi/export/**/variables/
+
+# Phase 1 obsolete onnx2tf path 산출물 (doc/27 §1.4 — Keras-native 경로로 대체됨)
+deploy_pi/export/backbone_int8/
 
 # =============================================================
 # 기타 large generated
@@ -187,6 +191,24 @@ deploy_pi/export/**/variables/
 *.tar
 *.tar.gz
 *.7z
+
+# Keras / TF 모델 (어디에 있어도 무겁다)
+*.keras
+*.h5
+
+# numpy serialization (calibration / dump / cache 용 대형)
+*.npy
+*.npz
+
+# 패키지 인스톨러 / 빌드 산출물
+*.deb
+*.rpm
+*.exe
+*.msi
+*.dmg
+
+# Office lock / 임시 파일 (~$Document.docx 같은 거)
+~$*
 
 # 실험 폴더 (강사 / 동료 발표 자료)
 presentation example/

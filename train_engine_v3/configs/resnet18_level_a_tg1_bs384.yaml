@@ -1,0 +1,31 @@
+# TG-1 batch sweep: bs=384 (baseline=256)
+run_name: level_a_tg1_bs384
+
+data:
+  format: tensor_shard
+  shard_dir: synth_engine_v3/out/94_production_102k_x200
+  aux_labels: synth_engine_v3/out/94_production_102k_x200/aux_labels.npz
+  max_shards: 32
+  val_ratio: 0.0625
+
+model:
+  name: resnet18
+  input_size: 128
+
+train:
+  batch_size: 384                # TG-0 baseline = 256
+  num_workers: 4
+  epochs: 2
+  lr: 0.1
+  momentum: 0.9
+  weight_decay: 5.0e-4
+  label_smoothing: 0.1
+  amp: true
+  amp_dtype: fp16                # baseline default
+  cudnn_benchmark: false
+  channels_last: false
+  compile: off
+
+loss_weights: { char: 1.0, radical: 0.2, total: 0.1, residual: 0.1, idc: 0.2 }
+eval: { every_epoch: 1 }
+out_dir: train_engine_v3/out/02_tg1_bs384

@@ -1,27 +1,32 @@
-# v3 Level A smoke — 최소 단위로 전체 파이프라인이 도는지 검증.
+# v3 Level A smoke — 동작 검증용 (rate 측정용 아님, 측정은 tg0_baseline 참조).
 # Goal:
-#   (a) shard 읽기 OK
-#   (b) aux_labels.npz 로드 + hash 일치 OK
+#   (a) shard 읽기 OK (새 corpus 94_production_102k_x200, 128 px)
+#   (b) aux_labels.npz 로드 + class_index_hash 일치 OK
 #   (c) MultiHead forward + 5-head loss 수렴 방향 OK
 #   (d) per-head metric 계산 OK
+#   (e) NVTX range 가 nsys 에서 보이는지 확인 (선택)
 #
-# Scope: 첫 4 shard 만 사용, 1 epoch. ~20,000 샘플 수준. RTX GPU 기준 1-2 분.
+# Scope: 첫 4 shard 만 사용, 1 epoch. ~20,000 샘플 수준. RTX 4080 Laptop 기준
+# 30-60 초. 짧아서 cuDNN benchmark + allocator warmup 이 전체 시간의 큰 비중
+# → cum rate / win rate 둘 다 노이즈 큼. **rate 비교는 tg0_baseline 으로**.
 
 run_name: level_a_smoke
 
 data:
   format: tensor_shard
-  shard_dir: d:/Library/01 Admissions/01 UIUC/4-2 SP26/ECE 479/lab3/synth_engine_v3/out/80_production_v3r_shard256
-  aux_labels: d:/Library/01 Admissions/01 UIUC/4-2 SP26/ECE 479/lab3/synth_engine_v3/out/80_production_v3r_shard256/aux_labels.npz
+  # paths are resolved relative to repo root by 00_smoke.py — works on both
+  # WSL (/mnt/d/...) and Windows (d:\...) without modification.
+  shard_dir: synth_engine_v3/out/94_production_102k_x200
+  aux_labels: synth_engine_v3/out/94_production_102k_x200/aux_labels.npz
   max_shards: 4                  # smoke 전용 — 4 shard = 약 20k 샘플
   val_ratio: 0.25                # 4 → 3 train + 1 val
 
 model:
   name: resnet18
-  input_size: 192                # Follow-up 1: v3 는 192 해상도 학습
+  input_size: 128                # corpus 가 128 으로 생성됨. upscale 안 함.
 
 train:
-  batch_size: 128
+  batch_size: 256
   num_workers: 4
   epochs: 1
   lr: 0.1
@@ -40,4 +45,4 @@ loss_weights:
 eval:
   every_epoch: 1
 
-out_dir: d:/Library/01 Admissions/01 UIUC/4-2 SP26/ECE 479/lab3/train_engine_v3/out/00_smoke
+out_dir: train_engine_v3/out/00_smoke

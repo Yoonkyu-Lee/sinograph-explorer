@@ -1,0 +1,44 @@
+# T3-mini — STRATIFIED val 로 char/top1 측정 가능한 첫 학습.
+#
+# T2 expanded 와 같은 100 shards × 5 epoch 으로 직접 비교 가능하지만,
+# val 을 shard-level → sample-level (val_per_shard=100) 로 전환:
+#   - val: 100 sample × 100 shard = 10,000 samples (chars 분포 = train 동일)
+#   - train: 4,900 sample × 100 shard = 490,000 samples
+#
+# 합격 기준:
+#   - train avg_loss epoch 별 단조 감소 (T2 expanded 추세 재현)
+#   - char/top1 epoch 5 에서 > 5% (학습된 chars 에 대해서만 의미. 100 shards
+#     → 2,500 unique chars 학습. 그 chars 에 대한 정확도 측정.)
+#   - radical/top1 epoch 5 에서 > 50% (기존 train 신호가 val 에서 측정 가능해짐)
+#   - idc/top1 > 80% (T2 expanded 75% → 동일 분포 val 이라 더 높을 듯)
+
+run_name: level_a_t3_mini
+
+data:
+  format: tensor_shard
+  shard_dir: synth_engine_v3/out/94_production_102k_x200
+  aux_labels: synth_engine_v3/out/94_production_102k_x200/aux_labels.npz
+  max_shards: 100
+  val_per_shard: 100              # ★ STRATIFIED val 사용 (val_ratio 무시됨)
+
+model:
+  name: resnet18
+  input_size: 128
+
+train:
+  batch_size: 640
+  num_workers: 4
+  epochs: 5
+  lr: 0.1
+  momentum: 0.9
+  weight_decay: 5.0e-4
+  label_smoothing: 0.1
+  amp: true
+  amp_dtype: fp16
+  cudnn_benchmark: true
+  channels_last: false
+  compile: off
+
+loss_weights: { char: 1.0, radical: 0.2, total: 0.1, residual: 0.1, idc: 0.2 }
+eval: { every_epoch: 1 }
+out_dir: train_engine_v3/out/12_t3_mini

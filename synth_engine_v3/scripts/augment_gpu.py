@@ -28,6 +28,19 @@ from pipeline_gpu import (
     GPUContext, _sample, _sample_batch_uniform, register_layer,
 )
 
+# Optional: fused photometric (brightness + contrast + invert + gaussian_noise)
+# CUDA kernel (Phase OPT-3). Falls back to per-op chain when extension is
+# unavailable (Windows native build w/ MSVC OS check, etc.).
+try:
+    import sys as _sys
+    from pathlib import Path as _Path
+    _CR_DIR = _Path(__file__).resolve().parent / "cuda_raster"
+    if str(_CR_DIR) not in _sys.path:
+        _sys.path.insert(0, str(_CR_DIR))
+    from photometric_fused import apply_fused_photometric    # noqa: E402
+except Exception:
+    apply_fused_photometric = None
+
 
 def _range(v):
     if isinstance(v, (list, tuple)) and len(v) == 2 and all(isinstance(x, (int, float)) for x in v):
@@ -190,6 +203,79 @@ def aug_invert(ctx: GPUContext, *, prob=1.0) -> GPUContext:
     # note: the surrounding run_block already handles per-sample `prob` gating;
     # this function just inverts everything it sees.
     ctx.canvas = 1.0 - ctx.canvas
+    return ctx
+
+
+@register_layer("augment.photometric_fused")
+def aug_photometric_fused(
+    ctx: GPUContext, *,
+    brightness=1.0,
+    contrast=1.0,
+    invert_prob: float = 0.0,
+    noise_std=0.0,    # 0..255 scale to match aug_gaussian_noise
+    brightness_prob: float = 1.0,
+    contrast_prob: float = 1.0,
+    noise_prob: float = 1.0,
+) -> GPUContext:
+    """Single CUDA-kernel substitute for brightness+contrast+invert+noise
+    chain (OPT-3, Lab 1 + register tiling). All four params are sampled per
+    sample, then fed to a fused kernel that does one read+write pass.
+
+    On first call this triggers a JIT build (~30 s). Caches afterwards.
+    Falls back to per-op chain when the extension fails to build (e.g. Win
+    native MSVC OS check).
+    """
+    n = ctx.n
+    rng = ctx.rng
+    device = ctx.device
+
+    # Per-sample params
+    br_lo, br_hi = _range(brightness)
+    ct_lo, ct_hi = _range(contrast)
+    ns_lo, ns_hi = _range(noise_std)
+    br = _sample_batch_uniform(br_lo, br_hi, n, rng)
+    ct = _sample_batch_uniform(ct_lo, ct_hi, n, rng)
+    ns_255 = _sample_batch_uniform(ns_lo, ns_hi, n, rng)
+    ns_pixel = ns_255 / 255.0
+    inv_flag = (torch.rand(n, generator=rng, device=device) < float(invert_prob)).to(torch.uint8)
+
+    # Per-sample prob gating — for samples where prob fails, force the
+    # parameter to identity (br=1, ct=1, ns=0). Preserves per-op semantics
+    # of the legacy unfused pipeline.
+    if float(brightness_prob) < 1.0:
+        keep = torch.rand(n, generator=rng, device=device) < float(brightness_prob)
+        br = torch.where(keep, br, torch.ones_like(br))
+    if float(contrast_prob) < 1.0:
+        keep = torch.rand(n, generator=rng, device=device) < float(contrast_prob)
+        ct = torch.where(keep, ct, torch.ones_like(ct))
+    if float(noise_prob) < 1.0:
+        keep = torch.rand(n, generator=rng, device=device) < float(noise_prob)
+        ns_pixel = torch.where(keep, ns_pixel, torch.zeros_like(ns_pixel))
+
+    if apply_fused_photometric is None:
+        # Fallback: legacy per-op chain (also exercises ctx mutations correctly)
+        f_br = br.view(n, 1, 1, 1)
+        f_ct = ct.view(n, 1, 1, 1)
+        mean = ctx.canvas.mean(dim=(1, 2, 3), keepdim=True)
+        canvas = (ctx.canvas - mean) * f_ct + mean
+        canvas = canvas * f_br
+        f_ns = ns_pixel.view(n, 1, 1, 1)
+        if (ns_pixel > 0).any():
+            noise = torch.randn(canvas.shape, generator=rng, device=device)
+            canvas = canvas + noise * f_ns
+        inv = inv_flag.view(n, 1, 1, 1).float()
+        canvas = inv * (1 - canvas) + (1 - inv) * canvas
+        ctx.canvas = canvas.clamp(0, 1)
+        return ctx
+
+    # Fused CUDA kernel path
+    apply_fused_photometric(
+        ctx.canvas,
+        brightness=br, contrast=ct,
+        noise_std_pixel=ns_pixel,
+        invert_flag=inv_flag,
+        rng=rng,
+    )
     return ctx
 
 

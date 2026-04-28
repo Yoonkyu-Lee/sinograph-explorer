@@ -321,6 +321,255 @@ elapsed 의 새 bottleneck 이 GPU 가 되므로 그 후에 측정·결정.
 
 ---
 
+## 12. Phase OPT-2 결과 — **2.24× 가속** (2026-04-26)
+
+WSL2 Ubuntu 24.04 + CUDA 12.8 + gcc + Python 3.12 환경에서 nvcc 빌드 성공.
+Windows 토끼굴 (CUDA 13.2 + MSVC 17.13 + Win26200 호환성) 우회.
+
+### 12.1 기술 스택 (WSL2 path)
+
+| 컴포넌트 | 위치 | 비고 |
+|---|---|---|
+| WSL distro | Ubuntu 24.04 | Win11 `wsl --install -d Ubuntu-24.04` |
+| Python | 3.12 | apt `python3.12-venv` |
+| venv | `~/lab3-venv/` | 공백 없는 경로 — PyTorch ninja 의 link `-L` 이 공백 paths 를 잘못 분리 |
+| PyTorch | 2.11.0 + cu128 | wheel 다운 |
+| CUDA toolkit | 12.8 | NVIDIA WSL repo (`cuda-toolkit-12-8`) |
+| GPU 드라이버 | Windows 581.80 (Win 호스트) | WSL 별도 설치 X — Windows 드라이버 pass-through |
+| 빌드 도구 | gcc / ninja / freetype-py / fontTools | apt + pip |
+
+### 12.2 모듈 구조
+
+```
+synth_engine_v3/scripts/cuda_raster/
+  outline_cache.py       freetype-py outline 추출 + Bezier flatten + LRU 캐시
+  raster_kernel.cu       CUDA per-pixel point-in-polygon (even-odd)
+  rasterize.py           torch.utils.cpp_extension JIT 빌드 + Python facade
+  test_outline_smoke.py  PIL parity (IoU) 검증
+  test_cuda_raster_smoke.py  CUDA 빌드 + IoU 통합 smoke
+  bench_kernel.py        커널 단독 throughput
+synth_engine_v3/scripts/
+  11_generate_corpus_cuda.py    CUDA path corpus generator (mp.Pool 우회)
+```
+
+### 12.3 단위별 측정
+
+| 항목 | 수치 | 노트 |
+|---|---:|---|
+| Kernel 단독 throughput (batch 64) | **66,991 glyphs/s** | 0.015 ms/glyph, PIL 단일 89/s 대비 **753×** |
+| Kernel batch sweep (16/64/256/1024) | 53k-67k glyphs/s | batch 64 sweet spot, kernel-launch overhead amortized |
+| IoU vs PIL (참고) | 0.79-0.97 | thin-stroke 一 0.79 외 전부 0.85+. 학습 영향 X |
+
+### 12.4 End-to-end corpus bench (300-class × 500 = 150,000 samples)
+
+| 경로 | elapsed | rate | mask_wait | gpu | 비고 |
+|---|---:|---:|---:|---:|---|
+| **PIL workers (10_generate, baseline)** | **631.9 s** | **237.4 s/s** | 218.5 s | 404.2 s | 8 mp.Pool workers + GPU augment |
+| **CUDA raster (11_generate_cuda)** | **282.5 s** | **531.0 s/s** | **0** (제거됨) | ~282 s (전부 GPU) | 단일 프로세스, no mp.Pool |
+
+**2.24× 가속**. mask_wait 가 완전히 사라졌고 새 bottleneck 은 GPU augment chain.
+GPU 시간을 더 줄이려면 OPT-3 (augment fusion) 가 필요한 단계지만, 지금
+531 s/s 로도 production 시간 충분히 단축됨.
+
+### 12.5 Production 시간 재계산
+
+| samples/class | baseline 237 s/s | CUDA 531 s/s | 절약 |
+|---:|---:|---:|---:|
+| 102,944 × 500 | 60 시간 | **27 시간** | 33 시간 |
+| 102,944 × 300 | 36 시간 | **16 시간** | 20 시간 |
+| 102,944 × 200 | 24 시간 | **11 시간** | 13 시간 |
+| 102,944 × 150 | 18 시간 | **8 시간** | 10 시간 |
+
+**102,944 × 200 = 11 시간** 이면 하루 안에 production corpus 생성 가능.
+
+### 12.6 Lab 학습 자산 적용 매핑
+
+| Lab | 적용 위치 |
+|---|---|
+| Lab 4 (3D conv stencil + halo) | per-pixel point-in-polygon 의 thread-grid sweep — block 16×16 픽셀, batch dim z |
+| Lab 8 (coalesced + warp divergence 최소화) | edge buffer (E_total, 4) 가 글리프별 contiguous packing → warp 안 thread 들이 연속 메모리 access. 글리프별 offset prefix 로 active edge 범위 결정 |
+| Lab 1 (one-thread-per-element) | 출력 픽셀당 단일 thread, 각 thread 가 자기 픽셀의 even-odd crossing 카운트 |
+| Lab 7 (scan / prefix) | 미사용 V1. V2 에서 active-edge prefix sum 필요시 |
+
+### 12.7 한계 + 향후 (V2 검토)
+
+V1 은 per-pixel naive — 각 thread 가 글리프의 모든 edge 를 순회 (E ~ 100-300).
+대부분 edge 가 자기 픽셀 y 와 무관하므로 wasted work. tile-based + shared
+memory edge cache (Lab 4 + Lab 8 결합) 로 V2 작성하면 추가 2-3× 가능
+추정. 하지만 현재 281 s 의 GPU time 중 raster 가 차지하는 비중은 작아 (대부
+분 augment chain 시간) ROI 낮음.
+
+대신 추가 최적화 후보:
+- **OPT-3 augment fusion**: rotate + brightness + contrast + photometric
+  단일 kernel. GPU 시간 ~30 % 절감 가능
+- **CANVAS 384 → 256** 축소: 모든 augment 가 0.44× FLOPs. 단, blur kernel
+  사이즈 등 픽셀 단위 파라미터 재조정 필요
+
+발표 demo 에 충분한 가속이 확보되었으므로 **여기서 OPT 시리즈 종료**가 합당.
+
+### 12.8 사용법 (WSL Linux)
+
+```bash
+# 1) WSL Ubuntu 한 번 셋업 (apt + venv + pip — 처음만)
+sudo apt install -y build-essential ninja-build python3.12-venv libfreetype-dev pkg-config wget
+wget https://developer.download.nvidia.com/compute/cuda/repos/wsl-ubuntu/x86_64/cuda-keyring_1.1-1_all.deb
+sudo dpkg -i cuda-keyring_1.1-1_all.deb
+sudo apt update && sudo apt install -y cuda-toolkit-12-8
+echo 'export PATH=/usr/local/cuda-12.8/bin:$PATH' >> ~/.bashrc
+echo 'export LD_LIBRARY_PATH=/usr/local/cuda-12.8/lib64:$LD_LIBRARY_PATH' >> ~/.bashrc
+python3.12 -m venv ~/lab3-venv
+source ~/lab3-venv/bin/activate
+pip install torch --index-url https://download.pytorch.org/whl/cu128
+pip install freetype-py numpy pillow pyyaml ninja kornia fonttools
+
+# 2) corpus 생성 (매번)
+cd "/mnt/d/Library/01 Admissions/01 UIUC/4-2 SP26/ECE 479/lab3"
+source ~/lab3-venv/bin/activate
+python synth_engine_v3/scripts/11_generate_corpus_cuda.py \
+    --config synth_engine_v3/configs/full_random_v3_realistic_v2.yaml \
+    --class-list sinograph_canonical_v3/out/class_list_practical.jsonl \
+    --samples-scale 0.4 \
+    --output-format tensor_shard \
+    --shard-input-size 128 \
+    --shard-size 5000 \
+    --batch-size 64 \
+    --save-workers 4 \
+    --out synth_engine_v3/out/90_production \
+    --seed 0
+```
+
+### 12.9 한 줄
+
+> **Windows + 신 MSVC + 신 Win 빌드 = nvcc OS 호환 지옥. WSL2 + Ubuntu 24.04 +
+> CUDA 12.8 + gcc 가 5 분만에 깨끗하게 빌드. End-to-end 2.24× 가속, production
+> corpus 24h → 11h.**
+
+---
+
+## 13. Phase OPT-Final — Lab 자산 풀 응용 + batch sweep (2026-04-26)
+
+OPT-2 (단순 GPU 라스터라이저) 가 2.24× 만에 멈춘 후, 사용자 지적: **GPU
+util 그래프에 dip 가 많고 (45 % avg), batched-lenet-cuda repo 의 학습 자산
+(Lab 4 shared memory + Lab 7 scan + Lab 8 sort + kernel fusion + register
+tiling) 을 거의 응용 못 함**.
+
+이 단계의 목표: **모든 Lab 학습을 적용** + 정직한 측정 + production-ready
+config 확정.
+
+### 13.1 적용한 4 가지 + 각 측정 결과
+
+| ID | 기법 | 적용처 | 단독 효과 | end-to-end |
+|---|---|---|---:|---:|
+| **B** | raster_kernel V2 — Lab 4 shared mem + Lab 7 active scan + Lab 8 sorted edges | `cuda_raster/raster_kernel_v2.cu` | **kernel 1.41×** (67k → 95k glyphs/s) + **pixel-identical to v1** | **0 %** (raster 가 전체 1 % 미만) |
+| **C** | CUDA streams + double-buffer + outline prefetch | `11_generate_corpus_cuda.py` `compute_stream`/`copy_stream` + thread queue | — | **−3 %** (530→514 s/s, streams overhead > overlap 이득) |
+| **D** | Photometric fusion — Lab 1 + register tiling | `cuda_raster/photometric_fused.cu` brightness + contrast + invert + noise 단일 kernel | — | **−13 %** (530→459 s/s, **확률 sub-batch slice 이득 소실**) |
+| **batch sweep** | batch_size 64 → 128 → 256 | CLI param | — | **+18 %** (530→623 s/s @ bs=128). bs=256 = 12.9 GB VRAM 포화 spill, 253 s/s 까지 추락 |
+
+### 13.2 정직한 분석
+
+**Lab 4/7/8 (kernel 수준)** — 적용 자체는 정통:
+- Shared memory edge cache (각 16×16 block 이 chunk 64 edges 공유)
+- 정렬된 edge 로 early-exit (Lab 7 active-edge concept)
+- Coalesced edge load (Lab 8 row-sort + warp 동기 read)
+- v1 과 pixel-identical 결과 (parity test 통과) 로 정확성도 확보
+- **kernel 1.41× 실속**
+
+→ 다만 **end-to-end 영향 0** — raster 가 전체 GPU 시간의 1 % 미만 (augment
+chain 에 의해 dominate). kernel 수준 노력의 정통성과 측정 진실성 사이 명확
+한 분리.
+
+**Streams + prefetch (시스템 수준)** — augment chain 이 GPU 를 사실상 풀로
+점유 (kernel launch 사이 dependency) 하므로 raster 와 augment 을 별 stream
+으로 두어도 overlap 이 거의 안 일어남. pinned host 버퍼 alloc + event sync
+오버헤드 가 overlap 이득을 초과 → 마이너스.
+
+**Photometric fusion (kernel fusion)** — 가장 의외였던 negative result.
+이론적으로 4 ops × 별도 launch / memory pass 를 1 op 으로 묶으면 ~4×
+memory traffic 절감. 하지만 기존 unfused 가 **per-op probabilistic prob**
+(brightness 0.6 / contrast 0.6 / invert 0.25 / noise 0.3) 로 sub-batch 만
+처리. fusion 은 모든 샘플을 4 op 다 통과시키므로 work 가 ~2.3× 증가 → **net
+−13 %**. cuDNN 의 elementwise 백엔드도 이미 거의 최적이라 fusion 이 launch
+overhead 로 만드는 절약 폭이 작음.
+
+**Batch sweep** — 가장 단순한데 **유일하게 의미 있는 +**. GPU avg util 45 %
+→ 58 % (bs=128), throughput +18 %. bs=256 은 VRAM 12.88 / 12.9 GB 포화 +
+spill → 오히려 추락. **bs=128 이 sweet spot** 확정.
+
+### 13.3 final 측정 표 (300-class × 500 = 150,000 samples, 동일 config)
+
+| Run | bs | kernel | streams | fusion | rate (s/s) | elapsed (s) | GPU avg util | VRAM peak | 비고 |
+|---|---:|---|---|---|---:|---:|---:|---:|---|
+| baseline (PIL workers) | 64 | — | — | — | 237.4 | 631.9 | 38 % | — | 8 mp.Pool, mask_wait 218 s |
+| OPT-2: CUDA v1 (90_cuda_pilot 류) | 64 | v1 | — | — | 531.0 | 282.5 | 45 % | 5.86 GB | mask_wait 0 |
+| OPT-Final C: streams + prefetch | 64 | v2 | ✓ | — | 514.2 | 291.7 | 50 % | 7.7 GB | streams overhead |
+| OPT-Final D: + fused photometric | 64 | v2 | ✓ | ✓ | 458.9 | 326.9 | — | — | sub-batch slice 손실 |
+| OPT-Final clean (91) | 64 | v2 | ✓ | — | 529.7 | 283.2 | 50 % | 7.7 GB | unfused 복귀 |
+| **OPT-Final ⭐ batch=128 (92)** | **128** | **v2** | **✓** | **—** | **622.7** | **240.9** | **58 %** | **7.69 GB** | **PRODUCTION 권장** |
+| batch=256 (93, 폐기) | 256 | v2 | ✓ | — | 253.3 | abort | 79-100 % | **12.88 GB OOM-spill** | shared mem swap |
+
+### 13.4 권장 production config
+
+```
+python synth_engine_v3/scripts/11_generate_corpus_cuda.py \
+    --kernel v2 \
+    --batch-size 128 \
+    --prefetch 2 \
+    --save-workers 4 \
+    --shard-size 5000 \
+    --shard-input-size 128 \
+    --progress-secs 10.0 \
+    ...
+```
+
+### 13.5 production 시간 (final, 102,944 class)
+
+| samples/class | 60 → 11 → 9.2 시간 변화 |
+|---:|---|
+| 500 | PIL 60 h → CUDA simple 27 h → **OPT-Final 23 h** |
+| 300 | 36 h → 16 h → **14 h** |
+| **200** | 24 h → 11 h → **9.2 시간** |
+| 150 | 18 h → 8 h → **6.9 시간** |
+
+End-to-end **2.63× 가속** vs PIL baseline (237 → 623 s/s).
+
+### 13.6 Lab 자산 적용 매트릭스 (최종)
+
+| Lab | 적용 위치 | 학습-측면 정통성 | end-to-end 기여 |
+|---|---|---|---:|
+| Lab 1 (one-thread-per-element) | raster v1 + photometric fused | 표준 | 기반 패턴 (필수) |
+| Lab 4 (shared memory + halo) | raster_kernel_v2 chunk-load + register tiling | **정통**. v1→v2 1.41× 측정 검증 | ~0 (raster ≪ augment) |
+| Lab 7 (Brent-Kung style scan) | raster_v2 의 sorted-edge early-exit (간략판) | 응용 | 위와 동일 |
+| Lab 8 (coalesced + JDS row-sort) | edge y-sort (CPU outline_cache) + warp-stride load | **정통**. v1 과 pixel-identical | 위와 동일 |
+| Kernel fusion | photometric_fused (brightness+contrast+invert+noise) | 응용 시도 | **−13 %** (probabilistic skip 손실) |
+| Register tiling / N-coarsening | photometric_fused 의 4-pixel COARSE_X | 적용 | fusion 자체가 net loss |
+| TF32 WMMA (Lab 추가) | 미적용 | 응용처 X (synth 에 GEMM 없음) | — |
+
+### 13.7 진정한 다음 ROI 후보 (이번엔 안 함)
+
+end-to-end 추가 가속 원하면:
+- **CANVAS 384 → 256**: 모든 augment 가 (256/384)² = 0.44× FLOPs. **2× 가능
+  성**. 단, blur kernel 픽셀 단위 파라미터 / glyph_scale / pad 모두 재튜닝
+  필요 → 품질 회귀 위험. 별도 Phase.
+- **GPU JPEG via nvJPEG**: 현재 PIL JPEG 가 CPU 라 짧지만 launch 됨. 단,
+  prob 0.5 라 큰 효과 X.
+- **CUDA Graph capture**: 동일 augment 시퀀스를 CUDA graph 로 capture →
+  per-batch python overhead 제거. 측정 가능한 수단.
+
+이들은 demo 일정 안에선 ROI 낮음. 학습 단계로 이동.
+
+### 13.8 두 줄 결론
+
+> **"GPU 라는 사실"** 만으로 2.24× 얻고, **"batch_size 적정"** 으로 추가
+> 1.17× → **end-to-end 2.63×** (237 → 623 samples/s).
+>
+> Lab 4/7/8 의 kernel-수준 정통 적용은 **kernel 자체 1.41×** 측정으로
+> 학습 입증되지만, **end-to-end 는 augment chain 이 ceiling 이라 0 영향**.
+> Streams / fusion 은 측정 결과 net loss — sub-batch slice + cuDNN
+> elementwise 가 이미 효율적이라 launch 오버헤드 절약이 work 증가를 보상
+> 못함. 이게 정직한 결론.
+
+---
+
 ## 9. 한 줄
 
 > **mask_wait 70 s 는 GPU 가 CPU 를 기다리는 시간. CUDA stream 으로 두 단계

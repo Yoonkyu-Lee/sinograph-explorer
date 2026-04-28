@@ -1,0 +1,59 @@
+# T5-light-v2 — production 학습 (lr 발산 후 재시작).
+#   v1 (lr=0.4) 발산 후 lr=0.1 으로 안전 학습. epoch 5 → 10 으로 늘려서 적정 학습량 확보.
+#
+# 변경점 (v1 → v2):
+#   - lr: 0.4 → 0.1 (T3-mini / v2 baseline 검증치)
+#   - epochs: 5 → 10 (충분한 학습 + warm restart 가능)
+#   - val_per_shard: 100 → 25 (eval 시간 4× 단축, 노이즈 무시할 수준)
+#   - eval_every: 1 → 2 (eval 빈도 절반, ckpt 는 매 epoch 저장 유지)
+#
+# 시간 예산:
+#   - train: ~84min × 10 epoch = 14h
+#   - eval: ~6min × 5 (10/2) = 30min
+#   - 총: ~14.5h
+#
+# 합격 기준 (epoch 10 종료 시):
+#   - train avg_loss < 5.0 (T3-mini epoch 5 의 2.86 보다 약간 높을 듯, full corpus 어려움)
+#   - val char/top1 > 5% (98k random 0.001%)
+#   - val radical/top1 > 30%
+#   - val idc/top1 > 80%
+#   - 학습 도중 NaN / loss spike 없음 (lr=0.1 이라 안전 영역)
+
+run_name: level_a_t5_light_v2
+
+data:
+  format: tensor_shard
+  shard_dir: synth_engine_v3/out/94_production_102k_x200
+  aux_labels: synth_engine_v3/out/94_production_102k_x200/aux_labels.npz
+  max_shards: 0                  # 0 = 전체 (3927)
+  val_per_shard: 25              # ★ v1 의 100 → 25 (4× 빠른 eval)
+
+model:
+  name: resnet18
+  input_size: 128
+
+train:
+  batch_size: 640
+  num_workers: 4
+  epochs: 10                     # ★ v1 의 5 → 10
+  lr: 0.1                        # ★ v1 의 0.4 → 0.1 (T3-mini 검증치)
+  momentum: 0.9
+  weight_decay: 5.0e-4
+  label_smoothing: 0.1
+  amp: true
+  amp_dtype: fp16
+  cudnn_benchmark: true
+  channels_last: false
+  compile: off
+  scheduler: cosine
+  warmup_epochs: 1
+  ckpt_save: true
+  ckpt_best_by: char/top1
+  resume: true
+
+loss_weights: { char: 1.0, radical: 0.2, total: 0.1, residual: 0.1, idc: 0.2 }
+
+eval:
+  every_epoch: 2                  # ★ eval 빈도 1/2 (50min 절약)
+
+out_dir: train_engine_v3/out/15_t5_light_v2
