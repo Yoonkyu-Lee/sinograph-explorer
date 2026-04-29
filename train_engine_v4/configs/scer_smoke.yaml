@@ -1,0 +1,73 @@
+# v4 SCER smoke — sanity for forward / backward / curriculum / log spec.
+#
+# Goals (doc/28 §5.1):
+#   (a) v3 best.pt warm-start: backbone + 4 structure heads load OK,
+#       embedding head + arc_classifier + char_head random init
+#   (b) all 6 loss components (char, arc, rad, tot, res, idc) finite, no NaN
+#   (c) curriculum: epoch 1 lands in warmup (α=1.0 ε=0.1) — schedule prints
+#       at epoch start
+#   (d) realtime log spec (doc/28 §9.1): timestamp, per-head, α/ε, throughput,
+#       sysmon — all flushed to console
+#   (e) end-of-epoch eval reports both char/* and emb/* metrics
+#   (f) ArcFace easy_margin=true + m=0.3 keeps loss stable on smoke set
+#
+# Scope: first 4 shards from production corpus (~20k samples), 1 epoch.
+# RTX 4080 Laptop GPU: ~30-60 seconds. Short — rates are noisy, do not use
+# for performance comparison; production config is the throughput baseline.
+
+run_name: scer_smoke
+
+data:
+  format: tensor_shard
+  shard_dir: synth_engine_v3/out/94_production_102k_x200
+  aux_labels: synth_engine_v3/out/94_production_102k_x200/aux_labels.npz
+  max_shards: 4                  # smoke — 4 shard = ~20k samples
+  # Stratified split (each shard contributes both train and val): the corpus
+  # is codepoint-clustered per shard, so SHARD-level split would put unseen
+  # codepoints in val → char/top1 trivially 0. Stratified gives meaningful
+  # char/top1 + emb/top1 numbers for the doc/28 §5.1 gate.
+  val_per_shard: 25
+
+model:
+  name: resnet18
+  input_size: 128
+  emb_dim: 128                   # SCER embedding dim
+  arc_s: 30.0
+  arc_m: 0.3                     # smoke uses smaller margin (production: 0.5)
+  easy_margin: true              # smoke = stable; production = false
+
+# Warm-start from v3 best.pt — backbone + 4 structure heads.
+# Embedding head, arc_classifier, char_head are random init.
+warm_start:
+  v3_ckpt: train_engine_v3/out/15_t5_light_v2/best.pt
+  load_structure_heads: true
+
+train:
+  batch_size: 256
+  num_workers: 4
+  epochs: 1
+  lr: 0.05                       # halve lr — backbone is warm-started, heads
+                                 # are fresh; large lr blows up fresh heads
+  momentum: 0.9
+  weight_decay: 5.0e-4
+  label_smoothing: 0.1            # for the legacy char_head CE only
+  amp: true
+  amp_dtype: fp16
+  cudnn_benchmark: true
+  channels_last: false
+  log_every: 10                  # smoke = small steps, frequent logs
+  window_steps: 20
+
+# Base loss weights (curriculum scales char and embedding only)
+loss_weights:
+  char: 1.0
+  embedding: 1.0
+  radical: 0.2
+  total: 0.1
+  residual: 0.1
+  idc: 0.2
+
+eval:
+  every_epoch: 1
+
+out_dir: train_engine_v4/out/00_scer_smoke

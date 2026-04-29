@@ -1,0 +1,22 @@
+{
+  "mode": "weight",
+  "n_class": 98169,
+  "emb_dim": 128,
+  "dtype": "float32",
+  "l2_normalized": true,
+  "source_ckpt": "D:\\Library\\01 Admissions\\01 UIUC\\4-2 SP26\\ECE 479\\lab3\\train_engine_v4\\out\\16_scer_v1\\best.pt",
+  "source_epoch": 10,
+  "source_metrics": {
+    "char/top1": 0.01740089975384093,
+    "char/top5": 0.039300568712333415,
+    "emb/top1": 0.37518037518037517,
+    "emb/top5": 0.5463033698327816,
+    "radical/top1": 0.6654783125371361,
+    "idc/top1": 0.9310639023974063,
+    "total_strokes/mae": 0.8110919794053986,
+    "residual_strokes/mae": 1.1371964727534005
+  },
+  "source_best_metric_value": 0.37518037518037517,
+  "source_best_metric_key": "emb/top1",
+  "sha256_prefix": "58b69d4ef9078948"
+}

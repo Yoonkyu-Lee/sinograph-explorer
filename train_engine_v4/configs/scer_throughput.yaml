@@ -1,0 +1,61 @@
+# SCER throughput 측정용 — production batch + 50 shard, 1 epoch.
+#
+# Goal: SCER 의 steady-state img/s 를 production 조건 (batch=640) 에서 측정.
+# v3 T5-light v2 baseline 과 비교해서 SCER 추가 head (embedding + ArcFace
+# 12M params + cos sim + margin scatter) 가 throughput 에 얼마나 부담 주는지
+# 정량화. 이로부터 full production (10 epoch × 19.6M samples) 의 wall-clock
+# 추정.
+#
+# 50 shards × 5000 samples / 640 batch = ~390 steps. 첫 50 step 은 warmup
+# (cuDNN benchmark, allocator). win 표시는 마지막 50 step rolling avg.
+# 예상 runtime: ~1.5-2 분 RTX 4080 Laptop.
+
+run_name: scer_throughput
+
+data:
+  format: tensor_shard
+  shard_dir: synth_engine_v3/out/94_production_102k_x200
+  aux_labels: synth_engine_v3/out/94_production_102k_x200/aux_labels.npz
+  max_shards: 50
+  val_per_shard: 0               # eval 생략 (throughput 측정만)
+  val_ratio: 0.04                # 50 → 48 train + 2 val
+
+model:
+  name: resnet18
+  input_size: 128
+  emb_dim: 128
+  arc_s: 30.0
+  arc_m: 0.5
+  easy_margin: false             # production setting
+
+warm_start:
+  v3_ckpt: train_engine_v3/out/15_t5_light_v2/best.pt
+  load_structure_heads: true
+
+train:
+  batch_size: 640                # production batch (T5-light v2 와 동일)
+  num_workers: 4
+  epochs: 1
+  lr: 0.05
+  momentum: 0.9
+  weight_decay: 5.0e-4
+  label_smoothing: 0.1
+  amp: true
+  amp_dtype: fp16
+  cudnn_benchmark: true
+  channels_last: false
+  log_every: 25                  # ~390 step → 16 prog lines
+  window_steps: 50
+
+loss_weights:
+  char: 1.0
+  embedding: 1.0
+  radical: 0.2
+  total: 0.1
+  residual: 0.1
+  idc: 0.2
+
+eval:
+  every_epoch: 99                # eval 생략 (1 epoch 끝나도 안 함)
+
+out_dir: train_engine_v4/out/00b_scer_throughput

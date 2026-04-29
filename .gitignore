@@ -159,6 +159,7 @@ synth_engine_v2/samples/
 train_engine_v1/out/
 train_engine_v2/out/
 train_engine_v3/out/
+train_engine_v4/out/
 *.pt
 *.pth
 *.ckpt

@@ -12,7 +12,7 @@
 
 ## 환경
 
-- Windows PyTorch 학습/추론: `.venv/Scripts/python.exe` (PyTorch 2.11+cu128, RTX 4090)
+- Windows PyTorch 학습/추론: `.venv/Scripts/python.exe` (PyTorch 2.11+cu128, RTX 4080 Laptop GPU)
 - WSL Edge TPU 변환/컴파일: `~/lab2-style-venv/bin/python` (Python 3.11.15, TF 2.15.0, onnx 1.14.1, onnx-tf 1.10.0, PyTorch 2.1.0+cpu, edgetpu_compiler 16). Phase 1 에서 확립. doc/27 §3 참고.
 - Pi 추론 (실측 단계): `tflite_runtime` 또는 `ai-edge-litert` + `libedgetpu1-std`. Pi 환경 셋업은 `deploy_pi/requirements_pi.txt`.
 

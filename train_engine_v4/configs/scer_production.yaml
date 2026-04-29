@@ -1,0 +1,84 @@
+# SCER production training (doc/28 §5.2).
+#
+# 16_scer_v1: 첫 production 학습.
+#
+# 시간 예산 (실측 기반 — `scer_throughput.yaml` 결과):
+#   - throughput: 3,120 img/s steady-state @ batch=640 (RTX 4080 Laptop)
+#   - 19.6M samples / 3120 = 6285s/epoch ≈ 1h 45min × 10 epoch = 17.5h train
+#   - eval (val_per_shard=25 → ~1500 samples) per epoch ≈ 30s. 10 회 = 5min.
+#   - 합계: ~17.5h + ~10min = ~17.6h
+#
+# 합격 기준 (epoch 10 종료 시, doc/28 §6.3 게이트):
+#   - 학습 도중 NaN abort 없음 (§4.5 guard 통과)
+#   - val emb/top1 ≥ 30%
+#   - val emb/top5 ≥ 55%
+#   - val char/top1 ≥ 30% (legacy head — embedding head 와 비교용)
+#   - val radical/top1, idc/top1 v3 baseline 유지
+#
+# 변경점 (sanity → production):
+#   - max_shards: 5 → 0 (전체 3927)
+#   - epochs: 4 → 10
+#   - val_per_shard: 0 → 25 (eval 활성화)
+#   - eval.every_epoch: 99 → 1 (매 epoch — transition 추적 위해 빈도 높음)
+#   - scheduler: off → cosine warmup=1
+#   - ckpt_save: implicit → true, ckpt_best_by: emb/top1
+#   - resume: true (last.pt 있으면 자동 이어서)
+
+run_name: scer_v1
+
+data:
+  format: tensor_shard
+  shard_dir: synth_engine_v3/out/94_production_102k_x200
+  aux_labels: synth_engine_v3/out/94_production_102k_x200/aux_labels.npz
+  max_shards: 0                  # 0 = 전체 (3927)
+  val_per_shard: 3               # 3927 × 3 = 11,781 samples — Codex review #2 fix
+                                 # (이전 25 면 98k samples → eval 9분/epoch.
+                                 # 3 으로 줄여서 ~1.5분/epoch. 매 epoch 추적 OK.)
+
+model:
+  name: resnet18
+  input_size: 128
+  emb_dim: 128                   # SCER embedding dim (Coral SRAM 8MB 압박 안 함)
+  arc_s: 30.0
+  arc_m: 0.5                     # production 시작값. schedule 이 epoch 별 override.
+  easy_margin: false             # production. epoch 1-3 은 schedule 이 true 로 override.
+
+# Warm-start from v3 best.pt — backbone + 4 structure heads.
+warm_start:
+  v3_ckpt: train_engine_v3/out/15_t5_light_v2/best.pt
+  load_structure_heads: true
+
+train:
+  batch_size: 640                # production batch (v3 와 동일)
+  num_workers: 4
+  epochs: 10
+  lr: 0.05                       # v3 (0.1) 의 절반 — ArcFace + new heads 안전 마진
+  momentum: 0.9
+  weight_decay: 5.0e-4
+  label_smoothing: 0.1
+  amp: true
+  amp_dtype: fp16
+  cudnn_benchmark: true
+  channels_last: false
+  scheduler: cosine
+  warmup_epochs: 1               # epoch 1 동안 lr ramp
+  ckpt_save: true
+  ckpt_best_by: emb/top1         # SCER 의 primary metric (deploy-time NN 의 oracle)
+  resume: true                   # last.pt 있으면 자동 이어서
+  ckpt_every_steps: 5000         # intra-epoch last.pt — 50min 손실 방지 (Codex review #3)
+  log_every: 50                  # ~30000 step / epoch → ~600 prog lines / epoch
+  window_steps: 50
+
+# Base loss weights (curriculum scales char/embedding only)
+loss_weights:
+  char: 1.0
+  embedding: 1.0
+  radical: 0.2
+  total: 0.1
+  residual: 0.1
+  idc: 0.2
+
+eval:
+  every_epoch: 1                  # 매 epoch — transition 추적 + best.pt 갱신
+
+out_dir: train_engine_v4/out/16_scer_v1

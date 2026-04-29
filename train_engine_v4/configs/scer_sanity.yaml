@@ -1,0 +1,70 @@
+# SCER 5-epoch sanity — production batch + AMP + cosine + curriculum 전이 검증.
+#
+# Goals (Codex review #1, #2, #3 followup):
+#   (1) §4.4 6-tuple curriculum 이 epoch 별로 정확히 적용되는지
+#       (epoch 1-3 = warmup freeze m=0.3 easy=true,
+#        epoch 4 = transition unfreeze m=0.4 easy=false)
+#   (2) §4.5 non-finite guard 가 cumulative 로 carry-over 되는지
+#       (epoch_nan_counts 기록 + nan_count_total 누적)
+#   (3) epoch 1 (random head + freeze + small margin) 안정 — loss 단조 감소
+#   (4) epoch 3 → 4 transition (freeze unfreeze + m 0.3→0.4 + easy true→false)
+#       에서 loss 점프 → epoch 5 까지 어느 정도 회복하는지 확인
+#   (5) cosine warmup 이 켜진 상태에서 transition jump 가 1차 sanity (no-cosine)
+#       대비 더 부드러운지
+#
+# Scope: 5 shards × 5 epoch, production batch=640, cosine warmup=1.
+#        ~25k samples / 640 = ~39 step/epoch × 5 = ~195 step total.
+# Runtime: ~3-4 분 RTX 4080 Laptop GPU.
+
+run_name: scer_sanity
+
+data:
+  format: tensor_shard
+  shard_dir: synth_engine_v3/out/94_production_102k_x200
+  aux_labels: synth_engine_v3/out/94_production_102k_x200/aux_labels.npz
+  max_shards: 5
+  val_per_shard: 0
+  val_ratio: 0.0                  # eval_disabled 분기로 진입 (모든 shard 학습용)
+
+model:
+  name: resnet18
+  input_size: 128
+  emb_dim: 128
+  arc_s: 30.0
+  arc_m: 0.3                      # epoch 1 시작값. schedule 이 epoch 별 override.
+  easy_margin: true               # epoch 1 시작값. schedule 이 epoch 별 override.
+
+warm_start:
+  v3_ckpt: train_engine_v3/out/15_t5_light_v2/best.pt
+  load_structure_heads: true
+
+train:
+  batch_size: 640                 # production 배치
+  num_workers: 4
+  epochs: 5                       # epoch 4 transition 통과 + epoch 5 회복 관찰
+  lr: 0.05
+  momentum: 0.9
+  weight_decay: 5.0e-4
+  label_smoothing: 0.1
+  amp: true
+  amp_dtype: fp16
+  cudnn_benchmark: true
+  channels_last: false
+  scheduler: cosine               # production 과 동일
+  warmup_epochs: 1                # production 과 동일
+  log_every: 10                   # ~195 step → ~20 prog lines
+  window_steps: 20
+
+loss_weights:
+  char: 1.0
+  embedding: 1.0
+  radical: 0.2
+  total: 0.1
+  residual: 0.1
+  idc: 0.2
+
+eval:
+  every_epoch: 99                 # n_epochs(4) 보다 큼 → eval_disabled 분기.
+                                  # full 5 shards 학습. 학습 안정성만 검증.
+
+out_dir: train_engine_v4/out/00c_scer_sanity
