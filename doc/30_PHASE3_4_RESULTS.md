@@ -197,6 +197,26 @@ ai-edge-litert (2024 build, modern ARM NEON 최적화) 가 tflite_runtime 2.5 (2
 
 **Coral 의 deploy 가치**: SCER 같은 작은 INT8 모델에서는 +12% 만. 그러나 *동일 hardware* 에서 큰 모델 (예: ResNet-50, EfficientNet) 으로 확장 시 Coral 이 결정적. Pi/Coral 조합은 *fixed BOM* 에 다양한 모델 deploy 가능한 platform.
 
+### 2.4.6-real Pi 실측 — 실제 한자 PNG 20개
+
+`infer_pi_chars.py` — 실제 한자 PNG 20개 (`~/ece479/test/{한자}.png`) 로 deploy 시연:
+
+| Mode | top-1 | top-5 | avg forward |
+|---|---:|---:|---:|
+| Pi CPU | **10/20 (50%)** | **14/20 (70%)** | 14.45 ms |
+| Pi Coral | **10/20 (50%)** | **14/20 (70%)** | **11.49 ms** |
+
+**CPU vs Coral**: top-5 list 와 cosine sim 점수까지 완전 일치 (Coral 의 12% latency 향상 with 0pp accuracy 차이 재확인).
+
+**성공 사례** (top-1 정확): 三, 図, 嬰, 旧, 標, 獄, 盤, 蒼, 都, 鍵
+**부분 성공** (top-5, top-1 놓침): 太/機/鳳 (각 rank 1, 1자 차이), 等 (rank 5)
+**미스** (top-5 밖): 再 (150), 勝 (162), 戦 (233), 闘 (2), 活 (234), 演 (125)
+
+**관찰**:
+- 모델이 *시각적 유사 변종* 을 top-N 후보로 잘 묶음 (`三 → 𠀒 𡰥 𡵋`, `闘 → 𨶜 聞 闘`) — ArcFace cluster 가 visual semantic 성공
+- random val 1000-pack 의 34.30% 보다 50% 더 높음 — 이 test PNG 가 *깨끗한 합성* (synth_engine 의 augmentation 영향 적음)
+- 이는 *demo 시연용* 결과로 의미 있고, *production quality* 평가는 random val 1000-pack (34.30%) 가 더 적절
+
 ### 2.4.6 Pi 실측 정확도 (1000 val sample)
 
 `eval_pi_scer.py` — `val_pack_1000.npz` (production stratified val) 로 Pi 에서 직접 추론 + 정확도 측정:
