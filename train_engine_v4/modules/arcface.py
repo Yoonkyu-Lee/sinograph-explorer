@@ -92,29 +92,44 @@ class ArcMarginProduct(nn.Module):
         emb_norm: torch.Tensor,
         labels: torch.Tensor,
     ) -> torch.Tensor:
-        # cos similarity matrix: (N, C)
-        # caller's emb_norm should already be L2-normalized; re-normalize the
-        # weight every step (anchors learn but stay on unit sphere).
-        W_norm = F.normalize(self.weight, dim=1)
-        cos = F.linear(emb_norm, W_norm)              # (N, C)
-        cos = cos.clamp(-1.0 + 1e-7, 1.0 - 1e-7)      # numerical safety
+        """Math-parity refactor (doc/30 §2.4 plan E): only compute phi for the
+        target column instead of full (N, C). 5 (N,C) buffers → 1 (N,C) + 3 (N,1).
 
-        # cos(theta + m) = cos·cos_m - sin·sin_m, with sin = sqrt(1 - cos^2)
-        sin = torch.sqrt(1.0 - cos.pow(2))
-        phi = cos * self._cos_m - sin * self._sin_m   # (N, C) — full margin-shifted
+        Memory: at batch=640, n_class=98169 the original allocates
+            cos, sin, phi, one_hot, out  →  5 × 640×98169×fp32 ≈ 1.2 GB temp
+        New path:
+            cos                                           (N, C)
+            cos_t, sin_t, phi_t (target column only)      (N, 1)
+            scatter on cos clone → out                    (N, C)
+        ≈ 240 MB instead.
+
+        Numerically identical: gather→arithmetic→scatter has same fp32 ops as
+        the mask-multiply path on the target column; non-target columns are
+        bit-identical (cos value passes through unchanged).
+        """
+        # cos similarity matrix: (N, C). Caller's emb_norm should already be
+        # L2-normalized; re-normalize the weight every step (anchors learn but
+        # stay on unit sphere).
+        W_norm = F.normalize(self.weight, dim=1)
+        cos = F.linear(emb_norm, W_norm)                                # (N, C)
+        cos = cos.clamp(-1.0 + 1e-7, 1.0 - 1e-7)                        # safety
+
+        # Target-column-only phi computation
+        labels_2d = labels.view(-1, 1)                                  # (N, 1)
+        cos_t = cos.gather(1, labels_2d)                                # (N, 1)
+        sin_t = torch.sqrt(1.0 - cos_t.pow(2))                          # (N, 1)
+        phi_t = cos_t * self._cos_m - sin_t * self._sin_m                # (N, 1)
 
         if self.easy_margin:
-            # Use phi only where cos > 0 (angle < π/2), else fall back to cos.
-            phi = torch.where(cos > 0, phi, cos)
+            phi_t = torch.where(cos_t > 0, phi_t, cos_t)
         else:
-            # Original ArcFace: when θ + m would exceed π, use cos - m·sin(m)
-            # to keep the loss well-defined (monotone in cos).
-            phi = torch.where(cos > self._th, phi, cos - self._mm)
+            phi_t = torch.where(cos_t > self._th, phi_t, cos_t - self._mm)
 
-        # Build output: phi at target column, cos elsewhere.
-        one_hot = torch.zeros_like(cos)
-        one_hot.scatter_(1, labels.view(-1, 1), 1.0)
-        out = one_hot * phi + (1.0 - one_hot) * cos
+        # Replace target column in cos with phi_t. scatter is out-of-place
+        # (autograd-friendly). Non-target columns pass through identically.
+        # Under AMP autocast, math ops can promote phi_t to fp32; force back
+        # to cos.dtype for scatter (which requires self.dtype == src.dtype).
+        out = cos.scatter(1, labels_2d, phi_t.to(cos.dtype))            # (N, C)
         return out * self.s
 
 

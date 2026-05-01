@@ -82,7 +82,19 @@ def main() -> None:
 
     out_dir = _resolve(cfg["out_dir"])
     out_dir.mkdir(parents=True, exist_ok=True)
-    setup_logging(out_dir / "run.log")
+    # Codex review #2 round: append based on the EXISTING `run.log` itself,
+    # not on a checkpoint heuristic. This protects evidence even when:
+    #   - explicit checkpoint path differs from out_dir/last.pt
+    #   - last.pt was deleted but run.log remains
+    #   - extension/copy workflows that bypass last.pt
+    # The downside (legitimate fresh-run also appends) is acceptable —
+    # operator can manually rotate run.log if a clean slate is wanted.
+    log_path = out_dir / "run.log"
+    will_append = log_path.exists() and log_path.stat().st_size > 0
+    setup_logging(log_path, append=will_append)
+    if will_append:
+        print(f"[scer-prod] === RUN.LOG appended (existing log preserved) ===",
+              flush=True)
     print(f"[scer-prod] out_dir = {out_dir}")
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -134,18 +146,24 @@ def main() -> None:
         ds_val = TensorShardDataset(val_paths, shuffle=False, seed=0,
                                      shuffle_buffer=0)
 
+    # DataLoader tuning (Tier 1 plan B): deeper prefetch so workers can stage
+    # more H2D-ready batches. pin_memory_device deprecated in modern PyTorch
+    # (auto-detects CUDA), so just leave pin_memory=True.
+    prefetch_factor = int(cfg["train"].get("prefetch_factor", 4))
     dl_train = DataLoader(ds_train,
                            batch_size=cfg["train"]["batch_size"],
                            num_workers=cfg["train"]["num_workers"],
-                           pin_memory=True, drop_last=True,
-                           persistent_workers=True)
+                           pin_memory=True,
+                           prefetch_factor=prefetch_factor,
+                           drop_last=True, persistent_workers=True)
     dl_val = None
     if ds_val is not None:
         dl_val = DataLoader(ds_val,
                              batch_size=cfg["train"]["batch_size"],
                              num_workers=max(1, cfg["train"]["num_workers"] // 2),
-                             pin_memory=True, drop_last=False,
-                             persistent_workers=True)
+                             pin_memory=True,
+                             prefetch_factor=prefetch_factor,
+                             drop_last=False, persistent_workers=True)
 
     # ----- AMP / channels_last -----
     cudnn_benchmark = bool(cfg["train"].get("cudnn_benchmark", False))
@@ -189,12 +207,19 @@ def main() -> None:
     else:
         print(f"[scer-prod] no warm-start (random init)")
 
+    # SGD foreach (Tier 1 plan C): ATen vectorization across params.
+    # Note: tried fused=True but it errors on the freeze→unfreeze transition
+    # (PyTorch 2.11's _fused_sgd_ rejects None grads from frozen backbone).
+    # foreach=True handles None grads correctly and gives most of the
+    # kernel-launch saving anyway.
     optimizer = torch.optim.SGD(
         model.parameters(),
         lr=cfg["train"]["lr"],
         momentum=cfg["train"]["momentum"],
         weight_decay=cfg["train"]["weight_decay"],
+        foreach=True,
     )
+    print(f"[scer-prod] SGD foreach=True", flush=True)
     use_amp = bool(cfg["train"].get("amp", True)) and (device == "cuda")
     scaler = (torch.amp.GradScaler(device="cuda")
               if (use_amp and amp_uses_grad_scaler) else None)
@@ -232,10 +257,25 @@ def main() -> None:
         ck = torch.load(last_ckpt, map_location=device, weights_only=False)
         model.load_state_dict(ck["model"])
         optimizer.load_state_dict(ck["optimizer"])
+        # Override optimizer's per-group lr with yaml's new lr — load_state_dict
+        # restored old lr (from prior cosine endpoint, ~0); we want yaml's new
+        # base_lr to control the new cosine.
+        new_lr = float(cfg["train"]["lr"])
+        for pg in optimizer.param_groups:
+            pg["lr"] = new_lr
+            pg["initial_lr"] = new_lr             # LambdaLR reads this as base
         if scaler is not None and ck.get("scaler") is not None:
             scaler.load_state_dict(ck["scaler"])
         if scheduler is not None and ck.get("scheduler") is not None:
-            scheduler.load_state_dict(ck["scheduler"])
+            # PRESERVE: scheduler's last_epoch (cosine progress position)
+            # OVERRIDE: scheduler's base_lrs (must match yaml's new lr, not old)
+            sched_state = dict(ck["scheduler"])
+            sched_state["base_lrs"] = [new_lr] * len(optimizer.param_groups)
+            scheduler.load_state_dict(sched_state)
+            # Sync _last_lr so the next .get_last_lr() reflects the override
+            scheduler._last_lr = [pg["lr"] for pg in optimizer.param_groups]
+            print(f"[scer-prod]   scheduler base_lr overridden to "
+                  f"{new_lr} (yaml), last_epoch preserved")
         start_epoch = int(ck.get("epoch", 0)) + 1
         best_metric_value = float(ck.get("best_metric_value", -1.0))
         nan_count_total = int(ck.get("nan_count_total", 0))

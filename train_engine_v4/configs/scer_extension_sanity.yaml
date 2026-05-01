@@ -1,0 +1,70 @@
+# SCER extension sanity — Tier 1 (A,B,C,D,E) optimizations 검증.
+#
+# Goals (doc/30 §2.4 plan A-E):
+#   (A) channels_last memory format (NCHW → NHWC)
+#   (B) DataLoader prefetch_factor=4 + pin_memory_device="cuda"
+#   (C) SGD fused=True (foreach fallback)
+#   (D) NVTX off via SCER_NVTX env unset (default)
+#   (E) ArcFace gather/scatter forward (5 N×C buffers → 1 N×C + 3 N×1)
+#
+# Pass 기준:
+#   - Throughput: 기존 sanity (epoch 5 win 2,131 img/s) 대비 +30% 이상 (≥2,800)
+#   - Loss parity: epoch 2 train_loss 가 기존 sanity epoch 2 (6.36) 와 ±0.5 이내
+#   - NaN guard: epoch_nan_counts 가 [≤5, ≤5] 정상 범위
+#
+# Scope: 5 shards × 2 epoch, batch 640, fp16 AMP, channels_last on.
+#        ~25k samples / 640 = ~39 step × 2 = ~78 step.
+# Runtime: ~1-2 분 RTX 4080 Laptop GPU.
+
+run_name: scer_extension_sanity
+
+data:
+  format: tensor_shard
+  shard_dir: synth_engine_v3/out/94_production_102k_x200
+  aux_labels: synth_engine_v3/out/94_production_102k_x200/aux_labels.npz
+  max_shards: 5
+  val_per_shard: 0
+  val_ratio: 0.0                  # eval_disabled 분기 (전체 5 shards 학습용)
+
+model:
+  name: resnet18
+  input_size: 128
+  emb_dim: 128
+  arc_s: 30.0
+  arc_m: 0.3                      # warmup 시작값 (epoch 1-3 임시 구간)
+  easy_margin: true               # warmup 시작값
+
+warm_start:
+  v3_ckpt: train_engine_v3/out/15_t5_light_v2/best.pt
+  load_structure_heads: true
+
+train:
+  batch_size: 640                 # production 배치
+  num_workers: 4
+  prefetch_factor: 4              # ★ B
+  epochs: 5                       # 5 epoch — freeze (1-3) + unfreeze transition (4-5) 모두 봄
+  lr: 0.05
+  momentum: 0.9
+  weight_decay: 5.0e-4
+  label_smoothing: 0.1
+  amp: true
+  amp_dtype: fp16
+  cudnn_benchmark: true
+  channels_last: false            # ★ A — disabled to isolate
+  scheduler: cosine
+  warmup_epochs: 1
+  log_every: 10                   # ~78 step → ~8 prog lines
+  window_steps: 20
+
+loss_weights:
+  char: 1.0
+  embedding: 1.0
+  radical: 0.2
+  total: 0.1
+  residual: 0.1
+  idc: 0.2
+
+eval:
+  every_epoch: 99                 # eval-disabled
+
+out_dir: train_engine_v4/out/00d_scer_ext_sanity

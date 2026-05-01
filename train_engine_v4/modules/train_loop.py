@@ -25,6 +25,7 @@ Per doc/28 §9, the realtime log spec is:
 """
 from __future__ import annotations
 
+import os
 import sys
 import time
 from collections import deque
@@ -33,6 +34,12 @@ from dataclasses import dataclass
 
 import torch
 import torch.nn.functional as F
+
+# NVTX: enable only when SCER_NVTX=1 in env (e.g. for nsys profiling).
+# Default off — saves a few % per step on production runs (no try/except + no
+# CUDA range_push/pop syscalls in the hot path). Always-on context manager
+# overhead is small but real at ~10 ranges × ~30k steps × ~10 epochs.
+_NVTX_ENABLED = os.environ.get("SCER_NVTX", "0") == "1"
 
 # Reuse v3 helpers where identical — single source of truth for these utilities
 from train_engine_v3.modules.aux_labels import AuxTable                # noqa: F401
@@ -62,17 +69,25 @@ GRAD_CLIP_MAX_NORM = 10.0         # clip global grad norm; also enables nonfinit
 
 @contextmanager
 def _nvtx(name: str):
-    try:
-        torch.cuda.nvtx.range_push(name)
-    except Exception:
-        pass
-    try:
-        yield
-    finally:
+    """NVTX range — gated by SCER_NVTX env var (default off).
+
+    Production: env unset → context manager is a near-no-op (just yield).
+    Profile:    SCER_NVTX=1 → CUDA NVTX range_push/pop emitted for nsys.
+    """
+    if _NVTX_ENABLED:
         try:
-            torch.cuda.nvtx.range_pop()
+            torch.cuda.nvtx.range_push(name)
         except Exception:
             pass
+        try:
+            yield
+        finally:
+            try:
+                torch.cuda.nvtx.range_pop()
+            except Exception:
+                pass
+    else:
+        yield
 
 
 # ----------------------------------------------------------------------

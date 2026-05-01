@@ -1,0 +1,76 @@
+# SCER 10-epoch extension (epoch 11-20) — Tier 1 -A optimizations.
+#
+# Sanity (configs/scer_extension_sanity.yaml) 결과: A (channels_last) 가 RTX 4080
+# Laptop + ResNet-18 + 128x128 + AMP fp16 setup 에서 역효과 (NHWC 변환 overhead
+# > 가속 효과). 따라서 B+C+D+E 만 적용:
+#   - B. DataLoader prefetch_factor=4
+#   - C. SGD foreach=True
+#   - D. NVTX off (env SCER_NVTX 미설정)
+#   - E. ArcFace gather/scatter forward (5 N×C buffer → 1 N×C + 3 N×1)
+# 측정 throughput +35% in sanity.
+#
+# Resume from train_engine_v4/out/16_scer_v1/last.pt (epoch 10 endpoint).
+# Cosine LR 새로 부여 — total_steps_new=613,220, last_step=306,610 (epoch 10
+# 끝) → 새 lambda 가 cos(π × 0.5) = 0 → start lr = base_lr/2 = 0.001 (peak
+# 0.002 의 절반). 부드러운 ramp 후 epoch 20 에서 lr ≈ 0.
+#
+# Wall-clock 추정 (sanity 35% 가속 적용):
+#   기존 unfreeze epoch ~7,500s × 0.65 ≈ ~4,900s/epoch
+#   10 epoch × ~4,900s ≈ ~13.6 시간
+#   + eval (val_per_shard=3 → ~12k samples) ~1.5분 × 10 = ~15분
+#   합계: ~13.85 시간
+
+run_name: scer_v1_extension
+
+data:
+  format: tensor_shard
+  shard_dir: synth_engine_v3/out/94_production_102k_x200
+  aux_labels: synth_engine_v3/out/94_production_102k_x200/aux_labels.npz
+  max_shards: 0                  # 0 = 전체 (3927)
+  val_per_shard: 3               # 11,781 samples / eval (~1.5분)
+
+model:
+  name: resnet18
+  input_size: 128
+  emb_dim: 128
+  arc_s: 30.0
+  arc_m: 0.5                     # production. fine phase (epoch 8+) 가 schedule 로 m=0.5 적용
+  easy_margin: false
+
+# warm_start 항목 제거 — last.pt resume 으로 모든 weight 복원됨.
+# 50_train_scer.py 가 ws.get("v3_ckpt") 가 falsy 면 warm-start skip.
+
+train:
+  batch_size: 640
+  num_workers: 4
+  prefetch_factor: 4              # ★ B
+  epochs: 20                      # 10 → 20 (10 epoch 추가)
+  lr: 0.002                       # peak 0.05 의 1/25 (cosine 끝의 부드러운 가속)
+  momentum: 0.9
+  weight_decay: 5.0e-4
+  label_smoothing: 0.1
+  amp: true
+  amp_dtype: fp16
+  cudnn_benchmark: true
+  channels_last: false            # ★ A — disabled (sanity 결과 역효과)
+  scheduler: cosine
+  warmup_epochs: 0                # resume 시점에 warmup 불필요
+  ckpt_save: true
+  ckpt_best_by: emb/top1
+  resume: true                    # last.pt 자동 이어서
+  ckpt_every_steps: 5000          # intra-epoch 안전망
+  log_every: 50
+  window_steps: 50
+
+loss_weights:
+  char: 1.0
+  embedding: 1.0
+  radical: 0.2
+  total: 0.1
+  residual: 0.1
+  idc: 0.2
+
+eval:
+  every_epoch: 1                  # 매 epoch — extension 추세 추적
+
+out_dir: train_engine_v4/out/16_scer_v1   # ★ 기존 production 과 동일 (resume 위해)
