@@ -1,12 +1,57 @@
-# Pi-side inference dependencies (lightweight — no full TensorFlow)
-# Install on Pi: pip install -r requirements_pi.txt
-tflite-runtime>=2.14
-numpy>=1.24
-Pillow>=10.0
+# Pi-side inference + demo dependencies (Raspberry Pi 5, ARM64, Pi OS Bookworm).
+#
+# Tested on: Python 3.13.5 in a venv created with `python3 -m venv ~/venv-ocr`
+# (system Python on Pi OS Bookworm, NOT pyenv). tflite_runtime is NOT used —
+# it has no wheel for Python 3.13 — `ai-edge-litert` replaces it.
+#
+# Install:
+#     ~/venv-ocr/bin/pip install --upgrade pip wheel
+#     ~/venv-ocr/bin/pip install -r requirements_pi.txt
+#
+# System (apt) packages must be installed first — see deploy_pi/demo/README.md
+# for the full setup procedure.
 
-# For Coral Edge TPU support (optional), install ONE of:
-#   sudo apt-get install libedgetpu1-std        # standard speed (safer, cooler)
-#   sudo apt-get install libedgetpu1-max        # max speed (hot, requires good thermal)
-# Then the Python side just needs tflite-runtime (load_delegate handles Coral).
-# pycoral is an optional higher-level wrapper:
-#   pip install pycoral
+# ----------------------------------------------------------------------
+# Core inference runtime (always required)
+# ----------------------------------------------------------------------
+ai-edge-litert==2.1.3        # TFLite interpreter; replaces tflite_runtime on Py 3.13
+numpy==2.3.5
+Pillow==12.2.0
+
+# v3 baseline (ONNX FP32, INT8 deploy is broken — kept for comparison only)
+onnxruntime==1.25.1
+
+# ----------------------------------------------------------------------
+# Demo Stage 1 — commodity OCR engines (optional, install only what you bench)
+# ----------------------------------------------------------------------
+pytesseract==0.3.13          # needs apt: tesseract-ocr + lang packs (see README)
+easyocr==1.7.2
+cnocr==2.3.2.3
+manga-ocr==0.1.14
+fugashi==1.5.2               # manga-ocr Japanese tokenizer
+unidic-lite==1.0.8           # manga-ocr dictionary
+jaconv==0.5.0                # manga-ocr kana converter
+requests==2.33.1             # used by the Google Cloud Vision adapter
+
+# manga-ocr pulls in transformers + torch (CPU wheels on Pi). Pinning here
+# so a fresh install is reproducible — these are heavy (~1.5 GB) so install
+# them only on a machine running the Manga adapter.
+torch==2.11.0
+torchvision==0.26.0
+transformers==5.7.0
+
+# Note: PaddleOCR / paddlepaddle 3.x has a known SIGSEGV on ARM64 + Python
+# 3.13 (paddlepaddle.SaveOrLoadPirParameters). The PaddleOCR adapter detects
+# ARM64 and raises a clear RuntimeError. To force-attempt anyway:
+#     PADDLEOCR_FORCE=1 ~/ece479/demo/run_stage1.sh --commodity paddleocr-ch
+# paddleocr==3.5.0
+# paddlepaddle==3.2.2
+
+# ----------------------------------------------------------------------
+# Demo Stage 3 — Pi Camera live capture
+# ----------------------------------------------------------------------
+# picamera2 + libcamera Python bindings come from apt (python3-picamera2,
+# python3-libcamera) — they are NOT installable via pip. The venv must be
+# created with `--system-site-packages` to see them, OR symlinked manually.
+# OpenCV: install via apt (python3-opencv) for ARM-optimized BLAS.
+# These are intentionally absent from this pip file — see README.md.

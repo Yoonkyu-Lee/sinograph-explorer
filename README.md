@@ -229,21 +229,28 @@ sinograph-explorer/
 
 ## Quickstart
 
-### Pi-side inference (after `scp`-ing the artifacts)
+### Pi setup (one-time)
+
+Full procedure — apt packages, Python venv, artifact `scp`, smoke tests
+— in [`deploy_pi/demo/README.md`](deploy_pi/demo/README.md).
+Pip dependencies (with exact pinned versions tested on Pi OS Bookworm +
+Python 3.13) are in [`deploy_pi/requirements_pi.txt`](deploy_pi/requirements_pi.txt).
+
+### Pi-side inference (after artifacts are on the Pi)
 
 ```bash
 ~/venv-ocr/bin/python ~/ece479/scer/infer_pi_chars.py \
-    --tflite ~/ece479/scer/scer_int8_v20.tflite \
-    --anchors ~/ece479/scer/scer_anchor_db_v20.npy \
+    --tflite      ~/ece479/scer/scer_int8_v20.tflite \
+    --anchors     ~/ece479/scer/scer_anchor_db_v20.npy \
     --class-index ~/ece479/scer/class_index.json \
-    --image-dir ~/ece479/test
+    --image-dir   ~/ece479/test
 ```
 
 ### Live demo (3-stage)
 
 ```bash
-ssh pi "~/ece479/demo/run_stage1.sh"   # CPU bench: 7 commodity OCR + v3 + v4
-ssh pi "~/ece479/demo/run_stage2.sh"   # CPU vs Coral on 20 PNG
+ssh pi "~/ece479/demo/run_stage1.sh"      # CPU bench: 7 commodity OCR + v3 + v4
+ssh pi "~/ece479/demo/run_stage2.sh"      # CPU vs Coral on 20 PNG
 ssh -t pi "~/ece479/demo/run_stage3.sh"   # Pi Camera live capture loop
 ```
 
