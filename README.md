@@ -6,10 +6,6 @@
 > training on RTX 4080 → Keras port → TFLite INT8 quantization → Edge TPU
 > compile → live inference on a Raspberry Pi 5 + Pi Camera Module 3.
 
-> **한 줄 요약** — 98,169-자 한자 OCR을 **11 MB INT8 단일 모델 + 25 ms 추론**
-> 으로 라즈베리 파이 5 위에서 실시간 동작. PyTorch → ONNX → TFLite → Edge TPU
-> 의 풀 디플로이 파이프라인을 단일 사람이 설계·구현·검증.
-
 ECE 479 *Hardware for Cognitive Computing* (UIUC, Spring 2026), Lab 3 final
 project. Maintained by **Yoonkyu Lee** (`yoonguri21@gmail.com`).
 
@@ -19,7 +15,7 @@ project. Maintained by **Yoonkyu Lee** (`yoonguri21@gmail.com`).
 
 | Metric | Value | Comment |
 | --- | ---: | --- |
-| Character vocabulary | **98,169** | Universal CJK: 日 + 漢(번체/간체) + 한국 한자 + Unihan SMP Ext B |
+| Character vocabulary | **98,169** | Universal CJK: Japanese kanji + Traditional & Simplified Chinese hanzi + Korean hanja + Unihan SMP Ext B / C / D |
 | Deployable model size | **11 MB INT8** | 4× smaller than the 235 MB FP32 baseline; 40× smaller than Manga-OCR's 440 MB transformer |
 | Pi CPU forward latency | **10.1 ms** | INT8 TFLite via `ai-edge-litert`, batch 1 |
 | Pi CPU end-to-end | **25 ms / char** (40 char/s) | forward + 128-d cosine NN over 98 K anchors |
