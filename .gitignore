@@ -213,3 +213,19 @@ deploy_pi/export/backbone_int8/
 
 # 실험 폴더 (강사 / 동료 발표 자료)
 presentation example/
+
+# =============================================================
+# Demo runtime artifacts (Pi Camera captures, local dev sweep outputs)
+# =============================================================
+deploy_pi/demo/cap_*.jpg
+deploy_pi/demo/cap_*.png
+deploy_pi/demo/cap_chars/
+deploy_pi/demo/__pycache__/
+
+# OS / editor stragglers that slip through on Windows
+nul
+*.bak
+*.orig
+
+# auto-memory store (per-machine, not for repo)
+memory/
