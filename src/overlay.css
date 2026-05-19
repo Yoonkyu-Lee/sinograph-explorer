@@ -1,0 +1,106 @@
+/* Capture overlay — cursor-following 유효범위 rectangle + candidate panel. */
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  width: 100vw;
+  height: 100vh;
+  background: transparent;
+  overflow: hidden;
+  cursor: crosshair;
+  user-select: none;
+}
+#overlay-root {
+  position: fixed;
+  inset: 0;
+}
+
+/* the 유효범위 box — clear inside, the rest of the screen dimmed by the
+   box-shadow spread so the user sees exactly what will be captured. */
+#capture-rect {
+  position: fixed;
+  border: 2px solid #6fcf97;
+  border-radius: 4px;
+  box-shadow: 0 0 0 100vmax rgba(16, 20, 16, 0.34);
+  pointer-events: none;
+}
+/* locked in place — the candidate panel can now be clicked */
+#capture-rect.locked {
+  border: 3px solid #f0c060;
+}
+
+/* hint banner at the top */
+.hint {
+  position: fixed;
+  left: 50%;
+  top: 22px;
+  transform: translateX(-50%);
+  background: rgba(20, 24, 20, 0.86);
+  color: #f4f3ee;
+  font: 13px "Segoe UI", "Malgun Gothic", system-ui, sans-serif;
+  padding: 8px 18px;
+  border-radius: 8px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.hint b {
+  color: #9fd3b4;
+  font-weight: 600;
+}
+
+/* candidate panel — floats next to the rectangle */
+#cand-panel {
+  position: fixed;
+  min-width: 138px;
+  max-width: 230px;
+  background: rgba(18, 22, 18, 0.94);
+  border: 1px solid rgba(159, 211, 180, 0.45);
+  border-radius: 9px;
+  padding: 5px;
+  font: 13px "Segoe UI", "Malgun Gothic", system-ui, sans-serif;
+  color: #f4f3ee;
+}
+#cand-panel.hidden {
+  display: none;
+}
+.cand-head {
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #8c968c;
+  padding: 3px 8px 5px;
+}
+.cand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 9px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.cand:hover {
+  background: rgba(159, 211, 180, 0.18);
+}
+.cand-glyph {
+  font-family: "Noto Serif CJK KR", "Malgun Gothic", "Microsoft JhengHei", serif;
+  font-size: 26px;
+  line-height: 1;
+}
+.cand-cp {
+  font-size: 10px;
+  color: #8c968c;
+  font-family: Consolas, monospace;
+}
+.cand-score {
+  margin-left: auto;
+  font-size: 11px;
+  color: #9fd3b4;
+  font-family: Consolas, monospace;
+}
+.cand-empty {
+  padding: 8px 10px;
+  font-size: 12px;
+  color: #8c968c;
+}

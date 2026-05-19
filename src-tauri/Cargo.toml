@@ -1,0 +1,40 @@
+[package]
+name = "sinograph_explorer"
+version = "0.2.0"
+description = "Sinograph Dictionary — desktop viewer over the canonical_v3 hanzi database"
+authors = ["yoong"]
+edition = "2021"
+
+[lib]
+name = "sinograph_explorer_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.0.0", features = [] }
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2.0.0", features = [] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+# SCER hanzi recognition (doc/39) — ONNX inference + anchor cosine NN
+tract-onnx = "0.21"
+ndarray = "0.16"
+ndarray-npy = "0.9"
+image = "0.25"
+xcap = { version = "0.9", features = ["image"] }
+tauri-plugin-global-shortcut = "2"
+
+# Win32 SetWindowDisplayAffinity — hide the overlay from screen capture
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+# Optimize dependencies (tract, ndarray, image) at full opt-level even in dev
+# builds so recognition stays fast under `tauri dev`. Our own crate keeps the
+# default dev profile and stays debuggable.
+[profile.dev.package."*"]
+opt-level = 3
